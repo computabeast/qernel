@@ -1,7 +1,5 @@
 """
-Qernel Client Library
-
-Simple client for submitting quantum algorithms to the resource estimation API.
+Qernel Client for submitting quantum algorithms to the resource estimation API.
 """
 
 import json
@@ -102,27 +100,9 @@ class QernelClient:
             artifact_url: URL of the artifact to download
             output_path: Local path to save the artifact
         """
-        response = self.session.get(artifact_url)
+        response = self.session.get(artifact_url, stream=True)
         response.raise_for_status()
         
         with open(output_path, 'wb') as f:
-            f.write(response.content)
-
-
-# Convenience function for quick usage
-def run_algorithm(algorithm_file: str, 
-                 spec_file: str, 
-                 api_key: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Convenience function to run an algorithm.
-    
-    Args:
-        algorithm_file: Path to the algorithm Python file
-        spec_file: Path to the YAML specification file
-        api_key: Optional API key for authentication
-    
-    Returns:
-        Dictionary containing the results and artifact URLs
-    """
-    client = QernelClient()
-    return client.run_algorithm(algorithm_file, spec_file, api_key)
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)

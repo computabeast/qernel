@@ -1,7 +1,8 @@
 """
-Hello World algorithm example.
+Hello World Algorithm Example
 
-This demonstrates a simple 3-qubit circuit with Hadamard, Toffoli, and T gates.
+This demonstrates how to create a simple quantum algorithm plugin for Qernel.
+Users can use this as a template for their own algorithms.
 """
 
 import cirq

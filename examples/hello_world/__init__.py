@@ -1,3 +1,0 @@
-"""
-Hello World algorithm example.
-"""

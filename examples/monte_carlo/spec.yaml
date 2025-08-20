@@ -1,7 +1,0 @@
-# Monte Carlo algorithm specification
-algorithm:
-  name: "monte_carlo"
-  type: "monte_carlo"
-  epsilon: 0.01
-  payoff: "max"
-  hardware_preset: "GF-realistic"

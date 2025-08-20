@@ -23,39 +23,32 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: Test algorithm template
-      working-directory: ./template
+    - name: Test algorithm
       run: |
-        PYTHONPATH=.. python test_algorithm.py
+        python test_algorithm.py
     
     - name: Validate specification
-      working-directory: ./template
       run: |
         python -c "import yaml; yaml.safe_load(open('spec.yaml'))"
         echo "✓ Specification file is valid YAML"
     
-    - name: Test hello world example
-      working-directory: ./examples/hello_world
+    - name: Test qernel package
       run: |
-        PYTHONPATH=../.. python -c "
-        from algorithm import HelloWorldAlgorithm
-        algo = HelloWorldAlgorithm()
-        print(f'✓ Hello World algorithm: {algo.get_name()}')
-        circuit = algo.build_circuit({'epsilon': 0.01, 'payoff': 'max'})
-        print(f'✓ Circuit built with {circuit.num_qubits()} qubits')
+        python -c "
+        from qernel import Algorithm, QernelClient
+        print('✓ Qernel package imports successfully')
         "
     
     - name: Submit to Qernel API (main branch only)
       if: github.ref == 'refs/heads/main'
       env:
         QERNEL_API_KEY: ${{ secrets.QERNEL_API_KEY }}
-      working-directory: ./template
       run: |
-        PYTHONPATH=.. python -c "
+        python -c "
         try:
             from qernel import QernelClient
             client = QernelClient()
-            result = client.run_algorithm('algorithm_template.py', 'spec.yaml')
+            result = client.run_algorithm('hello_world.py', 'spec.yaml')
             print(f'✓ Submission successful: {result[\"run_id\"]}')
         except Exception as e:
             print(f'⚠ API submission failed (this is expected without API key): {e}')

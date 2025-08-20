@@ -1,3 +1,0 @@
-"""
-Monte Carlo algorithm example.
-"""

@@ -1,5 +1,5 @@
 """
-Simplified Algorithm base class for user implementations.
+Algorithm base class for quantum algorithm plugins.
 
 This provides a clean interface for users to implement quantum algorithms
 without needing to understand the internal plugin system.
