@@ -26,7 +26,7 @@ jobs:
     - name: Test algorithm template
       working-directory: ./template
       run: |
-        python test_algorithm.py
+        PYTHONPATH=.. python test_algorithm.py
     
     - name: Validate specification
       working-directory: ./template
@@ -37,7 +37,7 @@ jobs:
     - name: Test hello world example
       working-directory: ./examples/hello_world
       run: |
-        python -c "
+        PYTHONPATH=../.. python -c "
         from algorithm import HelloWorldAlgorithm
         algo = HelloWorldAlgorithm()
         print(f'✓ Hello World algorithm: {algo.get_name()}')
@@ -51,7 +51,7 @@ jobs:
         QERNEL_API_KEY: ${{ secrets.QERNEL_API_KEY }}
       working-directory: ./template
       run: |
-        python -c "
+        PYTHONPATH=.. python -c "
         try:
             from qernel import QernelClient
             client = QernelClient()
