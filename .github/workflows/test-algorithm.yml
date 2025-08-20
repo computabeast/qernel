@@ -46,10 +46,16 @@ jobs:
       run: |
         python -c "
         try:
-            from qernel import QernelClient
+            from qernel import QernelClient, PluginLoader
             client = QernelClient()
-            result = client.run_algorithm('hello_world.py', 'spec.yaml')
-            print(f'✓ Submission successful: {result[\"run_id\"]}')
+            
+            # Discover and submit all algorithms
+            algorithms = PluginLoader.discover_algorithms()
+            for algorithm_name, spec_file in algorithms.items():
+                algorithm_file = spec_file.replace('spec.yaml', f'{algorithm_name}.py')
+                result = client.run_algorithm(algorithm_file, spec_file)
+                print(f'✓ Submitted {algorithm_name}: {result[\"run_id\"]}')
+                
         except Exception as e:
             print(f'⚠ API submission failed (this is expected without API key): {e}')
             print('This is normal if QERNEL_API_KEY is not configured')

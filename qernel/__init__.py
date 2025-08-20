@@ -21,5 +21,6 @@ Usage:
 
 from .core.algorithm import Algorithm
 from .core.client import QernelClient
+from .core.plugin_loader import PluginLoader
 
-__all__ = ["Algorithm", "QernelClient"]
+__all__ = ["Algorithm", "QernelClient", "PluginLoader"]
