@@ -1,0 +1,12 @@
+# Algorithm specification template
+# Edit this file to configure your algorithm parameters
+
+algorithm:
+  name: "my_algorithm"          # Human-readable name
+  type: "my_algorithm"          # Algorithm type identifier
+  epsilon: 0.01                 # Error tolerance
+  payoff: "max"                 # Payoff function type
+  hardware_preset: "GF-realistic"  # Hardware model: GF-realistic, GF-optimistic, Beverland
+  # Add any additional parameters your algorithm needs below:
+  # custom_param1: value1
+  # custom_param2: value2
