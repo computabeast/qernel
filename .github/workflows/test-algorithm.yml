@@ -25,7 +25,7 @@ jobs:
     
     - name: Test algorithm
       run: |
-        python test/test_algorithm.py
+        PYTHONPATH=. python test/test_algorithm.py
     
     - name: Validate specification
       run: |
@@ -34,14 +34,14 @@ jobs:
     
     - name: Test qernel package
       run: |
-        python -c "
+        PYTHONPATH=. python -c "
         from qernel import Algorithm, QernelClient
         print('✓ Qernel package imports successfully')
         "
     
     - name: Test visualization (import only)
       run: |
-        python -c "
+        PYTHONPATH=. python -c "
         from qernel.vis import AlgorithmVisualizer
         print('✓ Visualization package imports successfully')
         "
@@ -51,7 +51,7 @@ jobs:
       env:
         QERNEL_API_KEY: ${{ secrets.QERNEL_API_KEY }}
       run: |
-        python -c "
+        PYTHONPATH=. python -c "
         try:
             from qernel import QernelClient, PluginLoader
             client = QernelClient()
