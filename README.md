@@ -18,6 +18,15 @@ import cirq
 from qernel import Algorithm
 
 class MyAlgorithm(Algorithm):
+    """
+    A docstring describing what you'd like to do to your algorithm, ie. what error mitigation techniques, 
+    what you want displayed, etc. 
+
+    Ex:
+    1. Error mitigation, ZNE, applied to the entire circuit.
+    2. I'd also like the circuit displayed in 3D in cirq-web.
+    """
+
     def get_name(self) -> str:
         return "My Algorithm"
     
