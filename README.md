@@ -62,3 +62,32 @@ client = QernelClient("https://api.qernel.example.com")
 # Run with real-time visualization
 result = client.run_algorithm_with_visualization("my_algorithm.py", "spec.yaml")
 ```
+
+### Supported packages
+
+<div align="left">
+
+<table>
+<tr>
+<th>Use Case</th>
+<th>Packages</th>
+</tr>
+<tr>
+<td>Resource estimation</td>
+<td><a href="https://github.com/quantumlib/qualtran">Qualtran</a></td>
+</tr>
+<tr>
+<td>Error mitigation</td>
+<td><a href="https://github.com/unitaryfund/mitiq">Mitiq</a></td>
+</tr>
+<tr>
+<td>Circuit design</td>
+<td>
+<a href="https://github.com/quantumlib/cirq">Cirq</a><br>
+<a href="https://github.com/Qiskit/qiskit">Qiskit</a> (TODO)<br>
+<a href="https://github.com/PennyLaneAI/pennylane">PennyLane</a> (TODO)
+</td>
+</tr>
+</table>
+
+</div>
