@@ -1,6 +1,16 @@
-```
+<div align="center">
+<img alt="Qernel logo" width="96px" src="https://www.dojoquantum.com/_next/image?url=%2Fquantum-computing.png&w=96&q=75">
+<br>
+
+An agentic, virtual kernel for efficient programming of quantum systems
+
+[![Compatible with Python versions 3.9 and higher](https://img.shields.io/badge/Python-3.9+-6828b2.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Qernel project on PyPI](https://img.shields.io/pypi/v/qernel.svg?logo=python&logoColor=white&label=PyPI&style=flat-square&color=9d3bb8)](https://pypi.org/project/qernel)
+
+```bash
 pip install qernel
 ```
+</div>
 
 ### Creating Your Algorithm
 
