@@ -25,7 +25,7 @@ jobs:
     
     - name: Test algorithm
       run: |
-        python test_algorithm.py
+        python test/test_algorithm.py
     
     - name: Validate specification
       run: |
@@ -37,6 +37,13 @@ jobs:
         python -c "
         from qernel import Algorithm, QernelClient
         print('✓ Qernel package imports successfully')
+        "
+    
+    - name: Test visualization (import only)
+      run: |
+        python -c "
+        from qernel.vis import AlgorithmVisualizer
+        print('✓ Visualization package imports successfully')
         "
     
     - name: Submit to Qernel API (main branch only)

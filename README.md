@@ -34,3 +34,17 @@ algorithm:
   payoff: "max"
   hardware_preset: "GF-realistic"
 ```
+
+### Using Visualization
+
+Qernel includes a real-time visualization system that provides a live window into quantum algorithm execution. To use it:
+
+```python
+from qernel import QernelClient
+
+# Create a standard client
+client = QernelClient("https://api.qernel.example.com")
+
+# Run with real-time visualization
+result = client.run_algorithm_with_visualization("my_algorithm.py", "spec.yaml")
+```
