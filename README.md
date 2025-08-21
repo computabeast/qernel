@@ -1,3 +1,7 @@
+```
+pip install qernel
+```
+
 ### Creating Your Algorithm
 
 1. **Create your algorithm file** (e.g., `my_algorithm.py`):
