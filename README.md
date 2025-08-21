@@ -69,8 +69,8 @@ result = client.run_algorithm_with_visualization("my_algorithm.py", "spec.yaml")
 
 <table>
 <tr>
-<th>Use Case</th>
-<th>Packages</th>
+<th align="left">Use Case</th>
+<th align="left">Packages</th>
 </tr>
 <tr>
 <td>Resource estimation</td>
