@@ -12,7 +12,8 @@ An agentic, virtual kernel for efficient programming of quantum systems
 
 ### Creating Your Algorithm
 
-1. **Create your algorithm file** (e.g., `my_algorithm.py`):
+Create your algorithm class by inheriting from the `Algorithm` base class:
+
 ```python
 import cirq
 from qernel import Algorithm
@@ -41,19 +42,6 @@ class MyAlgorithm(Algorithm):
             cirq.CNOT(q[0], q[1])
         )
         return circuit
-
-# Create an instance for testing
-algorithm = MyAlgorithm()
-```
-
-2. **Create your specification file** (`spec.yaml`):
-```yaml
-algorithm:
-  name: "my_algorithm"
-  type: "my_algorithm"
-  epsilon: 0.01
-  payoff: "max"
-  hardware_preset: "GF-realistic"
 ```
 
 ### API Configuration
@@ -65,16 +53,26 @@ QERNEL_API_KEY=your_api_key_here
 ```
 
 ### Using the Client
-```python
-from qernel.core.client import QernelClient, QernelConfig
-client = QernelClient()
-result = client.test_connection()
-```
-OR
 
 ```python
+from qernel import Algorithm, QernelClient
+
+# Create your algorithm instance
+algorithm = MyAlgorithm()
+
+# Create and use the client
+client = QernelClient()
+result = client.run_algorithm(algorithm)
+```
+
+OR with custom configuration:
+
+```python
+from qernel.core.client import QernelConfig
+
 config = QernelConfig(api_key="your_api_key_here")
 client = QernelClient(config)
+result = client.run_algorithm(algorithm)
 ```
 
 ### Using Visualization
@@ -82,12 +80,14 @@ client = QernelClient(config)
 Qernel includes a real-time visualization system that provides a live window into quantum algorithm execution. To use it:
 
 ```python
-from qernel.core.client import QernelClient
+from qernel import Algorithm, QernelClient
 
+# Create your algorithm instance
+algorithm = MyAlgorithm()
+
+# Create client and run with real-time visualization
 client = QernelClient()
-
-# Run with real-time visualization
-result = client.run_algorithm_with_visualization("my_algorithm.py", "spec.yaml")
+result = client.run_algorithm_with_visualization(algorithm)
 ```
 
 ### Supported packages

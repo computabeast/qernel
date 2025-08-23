@@ -21,8 +21,7 @@ class HTMLBuilder:
     def build_combined_view(algorithm_name: str, current_status: str, 
                            status_updates: List[Dict[str, Any]], 
                            final_results: Optional[Dict[str, Any]] = None,
-                           algorithm_code: Optional[str] = None,
-                           yaml_code: Optional[str] = None) -> str:
+                           algorithm_code: Optional[str] = None) -> str:
         """
         Build the combined HTML view with streaming status and results.
         
@@ -82,34 +81,19 @@ class HTMLBuilder:
         
         # Build code snippets section if available
         code_snippets_section = ""
-        if algorithm_code or yaml_code:
-            algorithm_snippet = ""
-            yaml_snippet = ""
-            
-            if algorithm_code:
-                algorithm_snippet = CODE_SNIPPET_TEMPLATE.format(
-                    fg=COLORS["fg"],
-                    sub=COLORS["sub"],
-                    circuit_bg=COLORS["circuit_bg"],
-                    sep=COLORS["sep"],
-                    title="Algorithm Code",
-                    code_content=HTMLBuilder._escape_html(algorithm_code)
-                )
-            
-            if yaml_code:
-                yaml_snippet = CODE_SNIPPET_TEMPLATE.format(
-                    fg=COLORS["fg"],
-                    sub=COLORS["sub"],
-                    circuit_bg=COLORS["circuit_bg"],
-                    sep=COLORS["sep"],
-                    title="YAML Specification",
-                    code_content=HTMLBuilder._escape_html(yaml_code)
-                )
+        if algorithm_code:
+            algorithm_snippet = CODE_SNIPPET_TEMPLATE.format(
+                fg=COLORS["fg"],
+                sub=COLORS["sub"],
+                circuit_bg=COLORS["circuit_bg"],
+                sep=COLORS["sep"],
+                title="Algorithm Code",
+                code_content=HTMLBuilder._escape_html(algorithm_code)
+            )
             
             code_snippets_section = CODE_SNIPPETS_SECTION_TEMPLATE.format(
                 fg=COLORS["fg"],
-                algorithm_code_snippet=algorithm_snippet,
-                yaml_code_snippet=yaml_snippet
+                algorithm_code_snippet=algorithm_snippet
             )
         
         # Combine all sections

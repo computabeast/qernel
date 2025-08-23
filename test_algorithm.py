@@ -24,7 +24,7 @@ class TestAlgorithm(Algorithm):
         Build a test quantum circuit.
         
         Args:
-            params: Dictionary containing algorithm parameters from spec.yaml
+            params: Dictionary containing algorithm parameters
         
         Returns:
             A Cirq Circuit object

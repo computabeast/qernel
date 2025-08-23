@@ -124,7 +124,6 @@ CODE_SNIPPETS_SECTION_TEMPLATE = """
         </summary>
         <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
             {algorithm_code_snippet}
-            {yaml_code_snippet}
         </div>
     </details>
 </div>"""

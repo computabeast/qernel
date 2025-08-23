@@ -27,7 +27,7 @@ class Algorithm(ABC):
         Build the quantum circuit for this algorithm.
         
         Args:
-            params: Dictionary containing algorithm parameters from spec.yaml
+            params: Dictionary containing algorithm parameters
                    Keys may include: epsilon, payoff, hardware_preset, etc.
         
         Returns:

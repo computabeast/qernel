@@ -5,7 +5,7 @@ A simple system for creating quantum algorithm plugins that can be executed
 by the quantum resource estimation system.
 
 Usage:
-    from qernel import Algorithm
+    from qernel import Algorithm, QernelClient
     
     class MyAlgorithm(Algorithm):
         def get_name(self) -> str:
@@ -17,10 +17,13 @@ Usage:
         def build_circuit(self, params: dict) -> cirq.Circuit:
             # Your circuit implementation here
             pass
+    
+    # Create client and run algorithm
+    client = QernelClient()
+    result = client.run_algorithm(MyAlgorithm())
 """
 
 from .core.algorithm import Algorithm
 from .core.client import QernelClient
-from .core.plugin_loader import PluginLoader
 
-__all__ = ["Algorithm", "QernelClient", "PluginLoader"]
+__all__ = ["Algorithm", "QernelClient"]

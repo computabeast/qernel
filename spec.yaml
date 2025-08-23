@@ -1,7 +1,0 @@
-# Hello World algorithm specification
-algorithm:
-  name: "hello_world"
-  type: "hello_world"
-  epsilon: 0.01
-  payoff: "max"
-  hardware_preset: "GF-realistic"
