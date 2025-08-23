@@ -9,7 +9,7 @@ from qernel import QernelClient
 class TestQernelClient(QernelClient):
     """Test client that returns realistic test data."""
     
-    def _run_algorithm_with_streaming(self, algorithm_file, spec_file, api_key, visualizer):
+    def _run_algorithm_with_streaming(self, algorithm_file, spec_file, visualizer):
         """Mock streaming algorithm execution for testing."""
         import time
         

@@ -46,10 +46,30 @@ class AlgorithmVisualizer:
         self.current_status = "Initializing..."
         self.final_results: Optional[Dict[str, Any]] = None
         
+        # File contents for code snippets
+        self.algorithm_code: Optional[str] = None
+        self.yaml_code: Optional[str] = None
+        self._load_file_contents()
+        
         # Webview components
         self.window: Optional[webview.Window] = None
         self.temp_file: Optional[str] = None
         self._window_closed = False
+    
+    def _load_file_contents(self) -> None:
+        """Load the contents of algorithm and spec files for code snippets."""
+        try:
+            # Load algorithm file
+            if os.path.exists(self.algorithm_file):
+                with open(self.algorithm_file, 'r', encoding='utf-8') as f:
+                    self.algorithm_code = f.read()
+            
+            # Load YAML file
+            if os.path.exists(self.spec_file):
+                with open(self.spec_file, 'r', encoding='utf-8') as f:
+                    self.yaml_code = f.read()
+        except Exception as e:
+            print(f"Warning: Could not load file contents for code snippets: {e}")
     
     def start_and_run(self) -> None:
         """Start the visualization window and run webview on main thread."""
@@ -153,7 +173,9 @@ class AlgorithmVisualizer:
             algorithm_name=self.algorithm_name,
             current_status=self.current_status,
             status_updates=status_updates,
-            final_results=self.final_results
+            final_results=self.final_results,
+            algorithm_code=self.algorithm_code,
+            yaml_code=self.yaml_code
         )
     
 
