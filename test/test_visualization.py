@@ -4,20 +4,41 @@ Test script to verify the visualization system works correctly.
 """
 
 from qernel import QernelClient
+from qernel.core.algorithm import Algorithm
+
+
+class TestAlgorithm(Algorithm):
+    """Test algorithm for visualization testing."""
+    
+    def get_name(self) -> str:
+        return "Test Algorithm"
+    
+    def get_type(self) -> str:
+        return "test"
+    
+    def build_circuit(self, params):
+        # Return a simple mock circuit
+        import cirq
+        q = cirq.LineQubit.range(2)
+        circuit = cirq.Circuit()
+        circuit.append(cirq.H(q[0]))
+        circuit.append(cirq.CNOT(q[0], q[1]))
+        circuit.append(cirq.measure(q[0], q[1]))
+        return circuit
 
 
 class TestQernelClient(QernelClient):
     """Test client that returns realistic test data."""
     
-    def _run_algorithm_with_streaming(self, algorithm_file, spec_file, api_key, visualizer):
+    def _run_algorithm_with_streaming(self, algorithm_instance, visualizer):
         """Mock streaming algorithm execution for testing."""
         import time
         
         # Simulate real-time updates with delays
-        visualizer.update_status("Reading algorithm file...", "info")
+        visualizer.update_status("Processing algorithm instance...", "info")
         time.sleep(1)
         
-        visualizer.update_status("Parsing specification...", "info")
+        visualizer.update_status("Building quantum circuit...", "info")
         time.sleep(1)
         
         visualizer.update_status("Submitting to quantum backend...", "info")
@@ -51,9 +72,10 @@ def test_visualization():
     print("Testing visualization system...")
     
     client = TestQernelClient()
+    test_algorithm = TestAlgorithm()
     
     try:
-        result = client.run_algorithm_with_visualization("test_algorithm.py", "test_spec.yaml")
+        result = client.run_algorithm_with_visualization(test_algorithm)
         print("✓ Visualization test completed successfully!")
         print(f"✓ Result keys: {list(result.keys())}")
         print(f"✓ Artifacts: {list(result.get('artifacts', {}).keys())}")

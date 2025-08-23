@@ -2,3 +2,4 @@ dev/
 __pycache__/
 *.egg-info/
 test_client.py
+.env

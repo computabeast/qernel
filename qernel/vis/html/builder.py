@@ -9,7 +9,8 @@ from .constants import (
     COLORS, BASE_HTML_TEMPLATE, HEADER_TEMPLATE, STATUS_SECTION_TEMPLATE,
     STATUS_HISTORY_SECTION_TEMPLATE, STATUS_UPDATE_TEMPLATE, RESULTS_SECTION_TEMPLATE,
     CIRCUIT_PREVIEW_TEMPLATE, CIRCUIT_IMAGE_TEMPLATE, CIRCUIT_TEXT_TEMPLATE,
-    STATS_BADGE_TEMPLATE, CIRCUIT_3D_SECTION_TEMPLATE
+    STATS_BADGE_TEMPLATE, CIRCUIT_3D_SECTION_TEMPLATE, CODE_SNIPPETS_SECTION_TEMPLATE,
+    CODE_SNIPPET_TEMPLATE
 )
 
 
@@ -19,7 +20,8 @@ class HTMLBuilder:
     @staticmethod
     def build_combined_view(algorithm_name: str, current_status: str, 
                            status_updates: List[Dict[str, Any]], 
-                           final_results: Optional[Dict[str, Any]] = None) -> str:
+                           final_results: Optional[Dict[str, Any]] = None,
+                           algorithm_code: Optional[str] = None) -> str:
         """
         Build the combined HTML view with streaming status and results.
         
@@ -77,8 +79,25 @@ class HTMLBuilder:
                 results_content=results_content
             )
         
+        # Build code snippets section if available
+        code_snippets_section = ""
+        if algorithm_code:
+            algorithm_snippet = CODE_SNIPPET_TEMPLATE.format(
+                fg=COLORS["fg"],
+                sub=COLORS["sub"],
+                circuit_bg=COLORS["circuit_bg"],
+                sep=COLORS["sep"],
+                title="Algorithm Code",
+                code_content=HTMLBuilder._escape_html(algorithm_code)
+            )
+            
+            code_snippets_section = CODE_SNIPPETS_SECTION_TEMPLATE.format(
+                fg=COLORS["fg"],
+                algorithm_code_snippet=algorithm_snippet
+            )
+        
         # Combine all sections
-        content = header + status_section + status_history + results_section
+        content = header + status_section + status_history + results_section + code_snippets_section
         
         # Build final HTML
         return BASE_HTML_TEMPLATE.format(
@@ -211,3 +230,16 @@ class HTMLBuilder:
                 lines.append(f"{key}: {value}")
         
         return "\n".join(lines) if lines else "No additional status information available"
+    
+    @staticmethod
+    def _escape_html(text: str) -> str:
+        """
+        Escape HTML characters in text.
+        
+        Args:
+            text: Text to escape
+            
+        Returns:
+            Escaped text
+        """
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

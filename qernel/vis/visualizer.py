@@ -29,17 +29,14 @@ class AlgorithmVisualizer:
     showing status updates, progress, and final results.
     """
     
-    def __init__(self, algorithm_file: str, spec_file: str):
+    def __init__(self, algorithm_name: str = "Algorithm"):
         """
         Initialize the visualizer.
         
         Args:
-            algorithm_file: Path to the algorithm file
-            spec_file: Path to the specification file
+            algorithm_name: Name of the algorithm being visualized
         """
-        self.algorithm_file = algorithm_file
-        self.spec_file = spec_file
-        self.algorithm_name = os.path.basename(algorithm_file).replace('.py', '')
+        self.algorithm_name = algorithm_name
         
         # Status tracking
         self.status_updates: List[StatusUpdate] = []
@@ -153,12 +150,9 @@ class AlgorithmVisualizer:
             algorithm_name=self.algorithm_name,
             current_status=self.current_status,
             status_updates=status_updates,
-            final_results=self.final_results
+            final_results=self.final_results,
+            algorithm_code=None  # No longer loading from files
         )
-    
-
-    
-
     
     def cleanup(self) -> None:
         """Clean up temporary files."""

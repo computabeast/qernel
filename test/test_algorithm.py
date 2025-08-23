@@ -2,25 +2,22 @@
 """
 Generic test script for quantum algorithm plugins.
 
-This script discovers and tests all algorithms found in the repository.
+This script tests algorithm instances directly.
 """
 
 import sys
 import traceback
-from qernel import PluginLoader
+from qernel.core.algorithm import Algorithm
 
 
-def test_algorithm(algorithm_name: str, spec_file: str):
-    """Test a single algorithm."""
-    print(f"Testing {algorithm_name} algorithm...")
+def test_algorithm_instance(algorithm_instance: Algorithm):
+    """Test a single algorithm instance."""
+    print(f"Testing {algorithm_instance.get_name()} algorithm...")
     
     try:
-        # Load the algorithm using the plugin loader
-        algorithm = PluginLoader.load_algorithm_from_spec(spec_file)
-        
         print("✓ Algorithm loaded successfully")
-        print(f"✓ Algorithm name: {algorithm.get_name()}")
-        print(f"✓ Algorithm type: {algorithm.get_type()}")
+        print(f"✓ Algorithm name: {algorithm_instance.get_name()}")
+        print(f"✓ Algorithm type: {algorithm_instance.get_type()}")
         
         # Test parameter validation
         test_params = {
@@ -30,14 +27,14 @@ def test_algorithm(algorithm_name: str, spec_file: str):
         }
         
         try:
-            algorithm.validate_params(test_params)
+            algorithm_instance.validate_params(test_params)
             print("✓ Parameter validation passed")
         except Exception as e:
             print(f"⚠ Parameter validation failed: {e}")
         
         # Test circuit building
         try:
-            circuit = algorithm.build_circuit(test_params)
+            circuit = algorithm_instance.build_circuit(test_params)
             print(f"✓ Circuit built successfully")
             print(f"  - Circuit depth: {len(circuit)}")
             print(f"  - Number of qubits: {len(circuit.all_qubits())}")
@@ -55,44 +52,34 @@ def test_algorithm(algorithm_name: str, spec_file: str):
         return False
 
 
-def test_spec_file(spec_file: str):
-    """Test that a spec.yaml file is valid."""
-    print(f"\nTesting specification file: {spec_file}")
+def create_test_algorithm() -> Algorithm:
+    """Create a test algorithm instance for testing."""
+    class TestAlgorithm(Algorithm):
+        def get_name(self) -> str:
+            return "Test Algorithm"
+        
+        def get_type(self) -> str:
+            return "test"
+        
+        def build_circuit(self, params):
+            import cirq
+            q = cirq.LineQubit.range(2)
+            circuit = cirq.Circuit()
+            circuit.append(cirq.H(q[0]))
+            circuit.append(cirq.CNOT(q[0], q[1]))
+            circuit.append(cirq.measure(q[0], q[1]))
+            return circuit
     
-    try:
-        import yaml
-        with open(spec_file, 'r') as f:
-            yaml.safe_load(f)
-        print("✓ spec.yaml is valid YAML")
-        return True
-    except Exception as e:
-        print(f"✗ spec.yaml is invalid: {e}")
-        return False
+    return TestAlgorithm()
 
 
 if __name__ == "__main__":
-    print("🧪 Running algorithm plugin tests...\n")
+    print("🧪 Running algorithm instance tests...\n")
     
-    # Discover all algorithms
-    algorithms = PluginLoader.discover_algorithms()
+    # Create test algorithm instance
+    test_algorithm = create_test_algorithm()
     
-    if not algorithms:
-        print("❌ No algorithms found!")
-        print("Make sure you have spec.yaml files in your repository.")
-        sys.exit(1)
-    
-    print(f"Found {len(algorithms)} algorithm(s):")
-    for name, spec_file in algorithms.items():
-        print(f"  - {name} ({spec_file})")
-    print()
-    
-    success = True
-    
-    # Test each algorithm
-    for algorithm_name, spec_file in algorithms.items():
-        success &= test_algorithm(algorithm_name, spec_file)
-        success &= test_spec_file(spec_file)
-        print()  # Add spacing between algorithms
+    success = test_algorithm_instance(test_algorithm)
     
     print("="*50)
     if success:

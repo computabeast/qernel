@@ -114,3 +114,23 @@ CIRCUIT_3D_SECTION_TEMPLATE = """
     </details>
 </div>
 <div style="height:1px;background:{sep};opacity:0.5;margin:10px 0"></div>"""
+
+# Code snippets section template (accordion style)
+CODE_SNIPPETS_SECTION_TEMPLATE = """
+<div style="margin-top: 20px;">
+    <details style="margin-bottom: 12px;">
+        <summary style="cursor: pointer; font-weight: 600; font-size: 16px; color: {fg}; padding: 8px 0;">
+            Source
+        </summary>
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+            {algorithm_code_snippet}
+        </div>
+    </details>
+</div>"""
+
+# Individual code snippet template (compact)
+CODE_SNIPPET_TEMPLATE = """
+<div style="background: rgba(0,0,0,0.3); border-radius: 4px; padding: 8px;">
+    <div style="font-weight: 500; font-size: 12px; margin-bottom: 6px; color: {sub};">{title}</div>
+    <pre style="font-size: 10px; line-height: 1.3; background: {circuit_bg}; border: 1px solid {sep}; border-radius: 3px; padding: 6px; margin: 0; color: {fg}; max-height: 200px; overflow-y: auto; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; white-space: pre-wrap; word-wrap: break-word;">{code_content}</pre>
+</div>"""

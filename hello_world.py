@@ -6,7 +6,7 @@ Users can use this as a template for their own algorithms.
 """
 
 import cirq
-from qernel import Algorithm
+from qernel import Algorithm, QernelClient
 
 
 class HelloWorldAlgorithm(Algorithm):
@@ -25,7 +25,7 @@ class HelloWorldAlgorithm(Algorithm):
         Build the Hello World quantum circuit.
         
         Args:
-            params: Dictionary containing algorithm parameters from spec.yaml
+            params: Dictionary containing algorithm parameters
         
         Returns:
             A Cirq Circuit object
@@ -42,5 +42,21 @@ class HelloWorldAlgorithm(Algorithm):
         return circuit
 
 
-# Create an instance for testing
-algorithm = HelloWorldAlgorithm()
+if __name__ == "__main__":
+    # Create an instance of the algorithm
+    algorithm = HelloWorldAlgorithm()
+    
+    # Create a client and run the algorithm
+    client = QernelClient()
+    
+    try:
+        # Test the connection first
+        connection_test = client.test_connection()
+        print(f"Connection test: {connection_test}")
+
+        # Run the algorithm
+        result = client.run_algorithm(algorithm)
+        print(f"Algorithm result: {result}")
+        
+    except Exception as e:
+        print(f"Error running algorithm: {e}")
