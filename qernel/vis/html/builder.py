@@ -78,6 +78,11 @@ class HTMLBuilder:
                 fg=COLORS["fg"],
                 results_content=results_content
             )
+
+            # Optional analysis section
+            analysis_section = HTMLBuilder._build_analysis_section(final_results)
+            if analysis_section:
+                results_section += analysis_section
         
         # Build code snippets section if available
         code_snippets_section = ""
@@ -202,34 +207,142 @@ class HTMLBuilder:
         Returns:
             Formatted results string
         """
-        lines = []
-        
-        # Add run ID if available
-        if 'run_id' in results:
-            lines.append(f"Run ID: {results['run_id']}")
-        
-        # Add status if available
-        if 'status' in results:
-            lines.append(f"Status: {results['status']}")
-        
-        # Add any error messages
-        if 'error' in results:
-            lines.append(f"Error: {results['error']}")
-        
-        # Add artifact URLs if available
-        if 'artifacts' in results:
-            lines.append("Artifacts:")
-            for name, url in results['artifacts'].items():
-                lines.append(f"  {name}: {url}")
-        
-        # Add any other relevant information
-        for key, value in results.items():
-            if key not in ['run_id', 'status', 'error', 'artifacts', 'shots', 'runtime_sec', 
-                          'ml_latency_ms', 'L2_noisy', 'L2_ml', 'shots_eff', 'eff_multiplier', 
-                          'savings', 'ideal_error']:
-                lines.append(f"{key}: {value}")
-        
-        return "\n".join(lines) if lines else "No additional status information available"
+        # Expect results shaped like:
+        # {"class": str, "class_doc": str, "methods": {...}}
+        klass = results.get("class")
+        class_doc = results.get("class_doc")
+        methods = results.get("methods") or {}
+
+        # Extract methods content
+        name_result = methods.get("get_name_result")
+        type_result = methods.get("get_type_result")
+        circuit_text = methods.get("build_circuit_summary")
+
+        # Build simple HTML with a boxed circuit preview
+        parts: List[str] = []
+        if klass:
+            parts.append(f"<div><strong>Class:</strong> {HTMLBuilder._escape_html(str(klass))}</div>")
+        if class_doc:
+            parts.append(f"<div style=\"color:{COLORS['sub']};margin-top:4px\">{HTMLBuilder._escape_html(str(class_doc))}</div>")
+        if name_result is not None:
+            parts.append(f"<div style=\"margin-top:8px\"><strong>Name:</strong> {HTMLBuilder._escape_html(str(name_result))}</div>")
+        if type_result is not None:
+            parts.append(f"<div><strong>Type:</strong> {HTMLBuilder._escape_html(str(type_result))}</div>")
+
+        # Circuit box
+        if circuit_text:
+            esc = HTMLBuilder._escape_html(str(circuit_text))
+            parts.append(
+                f"<div style=\"margin-top:12px\">"
+                f"<div style=\"font-weight:600;font-size:13px;margin-bottom:6px;\">Circuit (ASCII)</div>"
+                f"<pre style=\"font-size:12px;line-height:1.35;background:{COLORS['circuit_bg']};"
+                f"border:1px solid {COLORS['sep']};border-radius:8px;padding:10px;overflow:auto;margin:0;\">{esc}</pre>"
+                f"</div>"
+            )
+
+        return "".join(parts) if parts else "<div>No additional status information available</div>"
+
+    @staticmethod
+    def _build_analysis_section(results: Dict[str, Any]) -> str:
+        analysis = results.get("analysis") or {}
+        if not analysis:
+            return ""
+
+        parts: List[str] = []
+
+        # Summary metrics badges
+        summary = analysis.get("summary") or {}
+        badges = []
+        if summary:
+            for key in ["t_count", "qubit_count", "depth"]:
+                if key in summary and summary.get(key) is not None:
+                    badges.append({"text": f"{key}: {summary.get(key)}"})
+        badges_html = HTMLBuilder.build_stats_badges(badges) if badges else ""
+
+        # Pipeline table-like list
+        pipeline = analysis.get("pipeline") or []
+        pipeline_rows = []
+        for p in pipeline:
+            name = p.get("name", "")
+            status = p.get("status", "")
+            dur = p.get("duration_ms")
+            dur_str = f"{dur:.1f} ms" if isinstance(dur, (int, float)) else ""
+            # brief output status/error
+            brief = ""
+            out = p.get("output") or {}
+            if isinstance(out, dict):
+                if out.get("status") == "error" and out.get("error"):
+                    brief = str(out.get("error"))
+                elif out.get("summary"):
+                    brief = str(out.get("summary"))
+            code = p.get("code_snippet")
+
+            color = {
+                "ok": COLORS["success"],
+                "error": COLORS["error"],
+                "warning": COLORS["warning"],
+            }.get(status, COLORS["info"])
+
+            row = (
+                f"<div style=\"display:flex;gap:8px;align-items:center;margin:6px 0;padding:8px;"
+                f"border:1px solid {COLORS['sep']};border-radius:6px;background:rgba(255,255,255,0.02)\">"
+                f"<span style=\"display:inline-block;width:8px;height:8px;border-radius:9999px;background:{color}\"></span>"
+                f"<div style=\"flex:1\"><div style=\"font-weight:600;font-size:13px\">{HTMLBuilder._escape_html(name)}</div>"
+                f"<div style=\"font-size:12px;color:{COLORS['sub']}\">{HTMLBuilder._escape_html(brief) if brief else ''}</div></div>"
+                f"<div style=\"font-size:12px;color:{COLORS['sub']}\">{HTMLBuilder._escape_html(status)}</div>"
+                f"<div style=\"font-size:12px;color:{COLORS['sub']};min-width:70px;text-align:right\">{dur_str}</div>"
+                f"</div>"
+            )
+            # Optional collapsible code
+            if code:
+                row += (
+                    f"<details style=\"margin:-2px 0 6px 16px\"><summary style=\"cursor:pointer;color:{COLORS['sub']};font-size:12px\">Show code</summary>"
+                    f"<pre style=\"font-size:11px;line-height:1.3;background:{COLORS['circuit_bg']};border:1px solid {COLORS['sep']};border-radius:6px;padding:8px;overflow:auto;white-space:pre\">{HTMLBuilder._escape_html(code)}</pre>"
+                    f"</details>"
+                )
+            pipeline_rows.append(row)
+
+        pipeline_html = "".join(pipeline_rows)
+
+        # Artifacts badges
+        artifacts = (analysis.get("artifacts") or {})
+        artifact_badges = []
+        if artifacts.get("circuit_json_b64") is not None:
+            artifact_badges.append({"text": "artifact: circuit_json (b64)"})
+        artifacts_html = HTMLBuilder.build_stats_badges(artifact_badges) if artifact_badges else ""
+
+        # Reproduction script (collapsible)
+        repro = (analysis.get("reproduction") or {}).get("script")
+        repro_html = ""
+        if repro:
+            repro_html = (
+                f"<details style=\"margin-top:10px\">"
+                f"<summary style=\"cursor:pointer;color:{COLORS['sub']};font-size:12px\">Show reproduction script</summary>"
+                f"<pre style=\"font-size:11px;line-height:1.3;background:{COLORS['circuit_bg']};border:1px solid {COLORS['sep']};border-radius:6px;padding:8px;overflow:auto;white-space:pre-wrap\">{HTMLBuilder._escape_html(repro)}</pre>"
+                f"</details>"
+            )
+
+        # Assemble analysis card
+        inner = []
+        inner.append("<div style=\"font-weight:600;font-size:16px;margin-bottom:8px\">Analysis</div>")
+        if badges_html:
+            inner.append(f"<div style=\"margin-bottom:8px\">{badges_html}</div>")
+        if artifacts_html:
+            inner.append(f"<div style=\"margin-bottom:8px\">{artifacts_html}</div>")
+        if pipeline_html:
+            inner.append(pipeline_html)
+        if repro_html:
+            inner.append(repro_html)
+
+        if not inner:
+            return ""
+
+        card = (
+            f"<div style=\"background: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px; margin-top: 16px;\">"
+            f"{''.join(inner)}"
+            f"</div>"
+        )
+        return card
     
     @staticmethod
     def _escape_html(text: str) -> str:

@@ -18,6 +18,8 @@ class QernelConfig:
     api_url: str = "https://d3nt1x9f8mnu77.cloudfront.net"
     api_key: Optional[str] = None
     timeout: int = 60
+    # Slightly higher timeout for streaming SSE requests
+    stream_timeout: int = 120
     max_retries: int = 3
     
     def __post_init__(self):

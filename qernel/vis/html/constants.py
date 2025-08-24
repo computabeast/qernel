@@ -71,12 +71,12 @@ STATUS_UPDATE_TEMPLATE = """
     <div style="color: {fg}; font-size: 14px;">{message}</div>
 </div>"""
 
-# Results section template
+# Results section template (accepts raw HTML content)
 RESULTS_SECTION_TEMPLATE = """
 <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px;">
     <div style="font-weight: 600; font-size: 16px; margin-bottom: 12px;">Execution Results</div>
     <div style="color: {fg}; font-size: 14px; line-height: 1.5;">
-        <pre style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px; overflow-x: auto; margin: 0;">{results_content}</pre>
+        {results_content}
     </div>
 </div>"""
 
