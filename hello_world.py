@@ -54,9 +54,12 @@ if __name__ == "__main__":
         connection_test = client.test_connection()
         print(f"Connection test: {connection_test}")
 
-        # Run the algorithm
-        result = client.run_algorithm(algorithm)
-        print(f"Algorithm result: {result}")
+        # Stream the algorithm results (SSE)
+        print("Streaming events:")
+        for event in client.stream_algorithm(algorithm, params={}):
+            print(event)
+            if isinstance(event, dict) and event.get("type") == "done":
+                break
         
     except Exception as e:
         print(f"Error running algorithm: {e}")

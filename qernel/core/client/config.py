@@ -17,7 +17,7 @@ class QernelConfig:
     
     api_url: str = "https://d3nt1x9f8mnu77.cloudfront.net"
     api_key: Optional[str] = None
-    timeout: int = 30
+    timeout: int = 60
     max_retries: int = 3
     
     def __post_init__(self):
