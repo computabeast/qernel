@@ -41,9 +41,25 @@ class HTMLBuilder:
         )
         
         # Build status section
+        # Determine current level and time from the latest status update
+        if status_updates:
+            last = status_updates[-1]
+            current_level = (last.get('level') or 'info').lower()
+            ts = last.get('timestamp') or datetime.now()
+        else:
+            current_level = 'info'
+            ts = datetime.now()
+        current_time = ts.strftime("%H:%M:%S")
+        level_color = COLORS.get(current_level, COLORS["info"])
+
         status_section = STATUS_SECTION_TEMPLATE.format(
             fg=COLORS["fg"],
-            current_status=current_status
+            sub=COLORS["sub"],
+            sep=COLORS["sep"],
+            current_status=current_status,
+            current_level=current_level.upper(),
+            current_time=current_time,
+            level_color=level_color,
         )
         
         # Build status history
@@ -67,7 +83,10 @@ class HTMLBuilder:
             )
         
         status_history = STATUS_HISTORY_SECTION_TEMPLATE.format(
-            status_updates=status_updates_html
+            fg=COLORS["fg"],
+            sub=COLORS["sub"],
+            sep=COLORS["sep"],
+            status_updates=status_updates_html,
         )
         
         # Build results section if available
@@ -209,7 +228,8 @@ class HTMLBuilder:
         """
         # Expect results shaped like:
         # {"class": str, "class_doc": str, "methods": {...}}
-        klass = results.get("class")
+        # We intentionally do not display the class name in the UI per spec.
+        # klass = results.get("class")
         class_doc = results.get("class_doc")
         methods = results.get("methods") or {}
 
@@ -217,17 +237,18 @@ class HTMLBuilder:
         name_result = methods.get("get_name_result")
         type_result = methods.get("get_type_result")
         circuit_text = methods.get("build_circuit_summary")
+        build_doc = methods.get("build_circuit_doc")
 
         # Build simple HTML with a boxed circuit preview
         parts: List[str] = []
-        if klass:
-            parts.append(f"<div><strong>Class:</strong> {HTMLBuilder._escape_html(str(klass))}</div>")
         if class_doc:
             parts.append(f"<div style=\"color:{COLORS['sub']};margin-top:4px\">{HTMLBuilder._escape_html(str(class_doc))}</div>")
         if name_result is not None:
             parts.append(f"<div style=\"margin-top:8px\"><strong>Name:</strong> {HTMLBuilder._escape_html(str(name_result))}</div>")
         if type_result is not None:
             parts.append(f"<div><strong>Type:</strong> {HTMLBuilder._escape_html(str(type_result))}</div>")
+        if build_doc:
+            parts.append(f"<div style=\"margin-top:8px;color:{COLORS['sub']}\">{HTMLBuilder._escape_html(str(build_doc))}</div>")
 
         # Circuit box
         if circuit_text:
