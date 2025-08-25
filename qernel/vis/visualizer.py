@@ -4,10 +4,8 @@ Algorithm Visualizer for real-time quantum algorithm execution monitoring.
 
 import os
 import tempfile
-import time
-import threading
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass, field
 
 import webview
@@ -48,7 +46,7 @@ class AlgorithmVisualizer:
         self.temp_file: Optional[str] = None
         self._window_closed = False
     
-    def start_and_run(self) -> None:
+    def start_and_run(self, on_start: Optional[Callable[[], None]] = None) -> None:
         """Start the visualization window and run webview on main thread."""
         # Create initial HTML
         html_content = self._generate_html()
@@ -72,7 +70,10 @@ class AlgorithmVisualizer:
         
         # Start webview on main thread (this will block until window closes)
         try:
-            webview.start(debug=False)
+            if on_start is not None:
+                webview.start(func=on_start, debug=False)
+            else:
+                webview.start(debug=False)
         except Exception as e:
             print(f"Webview error: {e}")
         finally:

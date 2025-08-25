@@ -1,33 +1,32 @@
-"""
-Main client class for submitting quantum algorithms to the Qernel resource estimation API.
-"""
+"""Client for interacting with the Qernel resource estimation API."""
 
-import logging
 import base64
-import time
 import json
-from typing import Dict, Any, Optional, Iterator, Union, List, TYPE_CHECKING
+import logging
+import time
+from datetime import datetime
+from collections.abc import Iterator, Mapping
+from typing import Any, Optional, TYPE_CHECKING, Union
+
 import requests
 import cloudpickle
 
-from .exceptions import QernelAPIError
-from .config import QernelConfig
-from ..algorithm import Algorithm
-from pydantic import BaseModel, Field
-from datetime import datetime
-from .models import (
-    StreamEvent,
-    AlgorithmTranscript,
-    AlgorithmResponse,
-    MethodsPayload,
-)
+from qernel.core.client.exceptions import QernelAPIError
+from qernel.core.client.config import QernelConfig
+from qernel.core.algorithm import Algorithm
+from qernel.core.client.models import StreamEvent, AlgorithmTranscript
 
-if TYPE_CHECKING:
-    from qernel.vis.visualizer import AlgorithmVisualizer
+
+from qernel.vis.visualizer import AlgorithmVisualizer
+from qernel.vis.terminal import TerminalPrinter
 
 
 class QernelClient:
-    """Client for submitting quantum algorithms to the Qernel resource estimation API."""
+    """Client for submitting quantum algorithms to the Qernel API.
+
+    Manages HTTP session lifecycle, provides streaming and high-level
+    orchestration helpers, and aggregates a transcript of results.
+    """
     
     def __init__(self, config: Optional[QernelConfig] = None):
         self.config = config or QernelConfig()
@@ -45,186 +44,229 @@ class QernelClient:
         try:
             self.config.validate()
         except QernelAPIError as e:
-            self.logger.warning(f"Configuration validation failed: {e}")
+            self.logger.warning(
+                "Configuration validation failed: %s", e
+            )
+
+    def _get_base_url(self) -> str:
+        return self.config.api_url.rstrip('/')
+
+    def _mask_api_key(self) -> str:
+        api_key = self.config.api_key
+        if api_key and len(api_key) >= 8:
+            return f"{api_key[:4]}...{api_key[-4:]}"
+        elif api_key:
+            return "[set]"
+        else:
+            return "[missing]"
+
+    def _build_headers(self, accept: str) -> dict[str, str]:
+        headers: dict[str, str] = {
+            'Content-Type': 'application/json',
+            'Accept': accept,
+        }
+        if self.config.api_key:
+            headers['x-api-key'] = self.config.api_key
+        return headers
     
-    def run_algorithm(self, algorithm_instance: Algorithm, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        Submit an algorithm instance for resource estimation.
-        
-        Args:
-            algorithm_instance: An instance of Algorithm to be executed
-            params: Optional parameter dictionary to pass to the algorithm
-            
-        Returns:
-            Dict containing the API response
-            
-        Raises:
-            QernelAPIError: If the request fails
-        """
-        total_t0 = time.perf_counter()
-        cls = algorithm_instance.__class__
-        self.logger.info(f"Preparing to submit algorithm instance: {cls.__module__}.{cls.__name__}")
-        
-        # Serialize the algorithm instance using cloudpickle
-        t0 = time.perf_counter()
+    def _serialize_algorithm(self, algorithm_instance: Algorithm) -> str:
+        """Serialize an algorithm instance and return base64-encoded string."""
         try:
             serialized_algorithm = cloudpickle.dumps(algorithm_instance)
+            encoded_algorithm = base64.b64encode(serialized_algorithm).decode(
+                'utf-8'
+            )
+            return encoded_algorithm
         except Exception as e:
-            self.logger.error(f"Serialization failed: {e}")
+            self.logger.error("Algorithm serialization failed: %s", e)
             raise
-        t1 = time.perf_counter()
-        self.logger.info(f"Serialized algorithm (bytes={len(serialized_algorithm)} in {t1 - t0:.3f}s)")
-        
-        # Encode as base64 for JSON serialization
-        try:
-            encoded_algorithm = base64.b64encode(serialized_algorithm).decode('utf-8')
-        except Exception as e:
-            self.logger.error(f"Base64 encoding failed: {e}")
-            raise
-        self.logger.info(f"Base64 size (chars)={len(encoded_algorithm)}")
-        
-        # Prepare the request (match API style in example)
-        base_url = self.config.api_url.rstrip('/')
-        url = f"{base_url}/run"
-        masked_key = None
-        if self.config.api_key and len(self.config.api_key) >= 8:
-            masked_key = f"{self.config.api_key[:4]}...{self.config.api_key[-4:]}"
-        elif self.config.api_key:
-            masked_key = "[set]"
-        else:
-            masked_key = "[missing]"
-        headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'x-api-key': self.config.api_key
-        }
-        payload: Dict[str, Any] = {'algorithm_pickle': encoded_algorithm}
+    
+    def _build_stream_endpoint(self) -> str:
+        """Return the absolute URL for the streaming endpoint."""
+        base_url = self._get_base_url()
+        return f"{base_url}/stream"
+    
+    def _prepare_stream_payload(
+        self,
+        algorithm_instance: Algorithm,
+        params: Optional[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Return the JSON payload for streaming requests."""
+        encoded_algorithm = self._serialize_algorithm(algorithm_instance)
+        payload: dict[str, Any] = {'algorithm_pickle': encoded_algorithm}
         if params is not None:
-            payload['params'] = params
-        
-        self.logger.info(f"POST {url} (timeout={self.config.timeout}s, x-api-key={masked_key})")
-        t_req = time.perf_counter()
+            # Convert Mapping to a concrete dict for JSON serialization.
+            payload['params'] = dict(params)
+        return payload
+    
+    def _iter_sse_events(
+        self, response, parse_json: bool
+    ) -> Iterator[Union[str, dict[str, Any]]]:
+        """Yield parsed SSE events from a requests streaming response."""
+        for line in response.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+            if isinstance(line, str) and line.startswith("data: "):
+                data_str = line[6:]
+                if parse_json:
+                    try:
+                        yield json.loads(data_str)
+                        continue
+                    except Exception:
+                        pass
+                yield data_str
+            else:
+                yield line
+
+    def _decode_circuit_artifacts_in_place(self, analysis: Mapping[str, Any]) -> None:
+        """Decode circuit_json_b64 into circuit_json in-place if present."""
         try:
-            response = self.session.post(
+            artifacts = (analysis or {}).get('artifacts') or {}
+            b64 = artifacts.get('circuit_json_b64')
+            if not b64:
+                return
+            try:
+                decoded = base64.b64decode(b64).decode('utf-8')
+                try:
+                    artifacts['circuit_json'] = json.loads(decoded)
+                except Exception:
+                    artifacts['circuit_json'] = decoded
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _status_level_from_stage(self, stage: str) -> str:
+        """Return a status level derived from a stage suffix."""
+        if stage.endswith(":ok"):
+            return "success"
+        if stage.endswith(":err"):
+            return "error"
+        return "info"
+
+    def _print_status(
+        self,
+        printer: "TerminalPrinter",
+        visualizer: Optional["AlgorithmVisualizer"],
+        prefix: str,
+        msg: str,
+        level: str = "info",
+    ) -> None:
+        """Print status to terminal and optional visualizer."""
+        if prefix and prefix != "[status]":
+            printer.print_status(prefix.strip("[]"), msg, level=level)
+        else:
+            printer.print_status("", msg, level=level)
+        if visualizer is not None:
+            try:
+                visualizer.update_status(msg, level=level)
+            except Exception:
+                # Visualization errors are non-fatal.
+                pass
+
+    def stream_events(
+        self,
+        algorithm_instance: Algorithm,
+        params: Optional[Mapping[str, Any]] = None,
+        parse_json: bool = True,
+    ) -> Iterator[Union[str, dict[str, Any]]]:
+        """Stream Server-Sent Events (SSE) from the server.
+
+        Yields:
+          Either raw 'data:' payload strings or parsed dicts when
+          parse_json is True.
+
+        Raises:
+          QernelAPIError: If the streaming request fails.
+        """
+        cls = algorithm_instance.__class__
+        self.logger.info(
+            "Preparing to stream algorithm instance: %s.%s",
+            cls.__module__,
+            cls.__name__,
+        )
+
+        url = self._build_stream_endpoint()
+        headers = self._build_headers('text/event-stream')
+        try:
+            payload = self._prepare_stream_payload(algorithm_instance, params)
+        except Exception as e:
+            self.logger.error(
+                "Failed to serialize algorithm for streaming: %s", e
+            )
+            raise
+
+        self.logger.info(
+            "POST %s (stream=True, timeout=%ss)", url, self.config.stream_timeout
+        )
+        try:
+            with self.session.post(
                 url,
                 json=payload,
                 headers=headers,
-                timeout=self.config.timeout,
-            )
-            dt = time.perf_counter() - t_req
-            self.logger.info(f"Response received (status={response.status_code}, dt={dt:.3f}s, body_len={len(response.text)})")
-            
-            if response.status_code == 200:
-                try:
-                    result = response.json()
-                except Exception as e:
-                    self.logger.error(f"JSON parse failed: {e}")
-                    raise QernelAPIError(f"Failed to parse JSON response: {e}")
-                total_dt = time.perf_counter() - total_t0
-                self.logger.info(f"Algorithm submitted successfully (total={total_dt:.3f}s)")
-                return result
-            else:
-                self.logger.error(f"API request failed: {response.status_code} - {response.text[:300]}...")
-                raise QernelAPIError(
-                    f"API request failed: {response.status_code} - {response.text}",
-                    response.status_code,
-                    response.text,
-                )
-        except requests.exceptions.RequestException as e:
-            dt = time.perf_counter() - t_req
-            self.logger.error(f"Request error after {dt:.3f}s: {e.__class__.__name__}: {e}")
-            raise QernelAPIError(f"Request failed: {str(e)}")
-
-    def stream_algorithm(self, algorithm_instance: Algorithm, params: Optional[Dict[str, Any]] = None, parse_json: bool = True) -> Iterator[Union[str, Dict[str, Any]]]:
-        """
-        Submit an algorithm and stream results via Server-Sent Events (SSE).
-
-        Args:
-            algorithm_instance: An instance of Algorithm to be executed
-            params: Optional parameter dictionary to pass to the algorithm
-            parse_json: If True, parse SSE data payloads as JSON and yield dicts
-
-        Yields:
-            Either raw SSE data strings (without the leading 'data: ') or parsed dicts.
-
-        Raises:
-            QernelAPIError: If the request fails
-        """
-        cls = algorithm_instance.__class__
-        self.logger.info(f"Preparing to stream algorithm instance: {cls.__module__}.{cls.__name__}")
-
-        # Serialize and encode the algorithm instance
-        try:
-            serialized_algorithm = cloudpickle.dumps(algorithm_instance)
-            encoded_algorithm = base64.b64encode(serialized_algorithm).decode('utf-8')
-        except Exception as e:
-            self.logger.error(f"Failed to serialize algorithm for streaming: {e}")
-            raise
-
-        base_url = self.config.api_url.rstrip('/')
-        # Use same endpoint as non-streaming, server responds with SSE if Accept header set
-        url = f"{base_url}/run"
-        headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'text/event-stream',
-            'x-api-key': self.config.api_key
-        }
-        payload: Dict[str, Any] = {'algorithm_pickle': encoded_algorithm}
-        if params is not None:
-            payload['params'] = params
-
-        self.logger.info(f"POST {url} (stream=True, timeout={self.config.stream_timeout}s)")
-        try:
-            with self.session.post(url, json=payload, headers=headers, stream=True, timeout=self.config.stream_timeout) as response:
+                stream=True,
+                timeout=self.config.stream_timeout,
+            ) as response:
                 if response.status_code != 200:
                     body_preview = response.text[:300]
-                    self.logger.error(f"Streaming request failed: {response.status_code} - {body_preview}...")
+                    self.logger.error(
+                        "Streaming request failed: %d - %s...",
+                        response.status_code,
+                        body_preview,
+                    )
                     raise QernelAPIError(
-                        f"Streaming request failed: {response.status_code} - {response.text}",
+                        (
+                            "Streaming request failed: %d - %s"
+                            % (response.status_code, response.text)
+                        ),
                         response.status_code,
                         response.text,
                     )
-
-                for line in response.iter_lines(decode_unicode=True):
-                    if not line:
-                        continue
-                    # Expect lines like: "data: {json}\n\n"
-                    if isinstance(line, str) and line.startswith("data: "):
-                        data_str = line[6:]
-                        if parse_json:
-                            try:
-                                yield json.loads(data_str)
-                                continue
-                            except Exception:
-                                # Fall back to raw string if not JSON
-                                pass
-                        yield data_str
-                    else:
-                        # Yield non-standard lines raw for maximum visibility
-                        yield line
+                yield from self._iter_sse_events(response, parse_json=parse_json)
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"Streaming request error: {e.__class__.__name__}: {e}")
+            self.logger.error(
+                "Streaming request error: %s: %s", e.__class__.__name__, e
+            )
             raise QernelAPIError(f"Streaming request failed: {str(e)}")
 
-    def run_stream_with_handler(self, algorithm_instance: Algorithm, params: Optional[Dict[str, Any]] = None, visualizer: Optional["AlgorithmVisualizer"] = None) -> AlgorithmTranscript:
+    
+
+    def stream_algorithm(
+        self,
+        algorithm_instance: Algorithm,
+        params: Optional[Mapping[str, Any]] = None,
+        parse_json: bool = True,
+    ) -> Iterator[Union[str, dict[str, Any]]]:
+        """Deprecated: use stream_events.
+
+        This wrapper maintains backward compatibility.
         """
-        High-level OOP runner that consumes streaming events, aggregates a transcript,
-        updates terminal and optional HTML visualizer, and enforces all-or-nothing policy.
-        
-        Raises QernelAPIError with partial transcript on error.
+        self.logger.warning(
+            "stream_algorithm is deprecated; use stream_events instead."
+        )
+        yield from self.stream_events(algorithm_instance, params=params, parse_json=parse_json)
+
+    def run_stream_with_handler(
+        self,
+        algorithm_instance: Algorithm,
+        params: Optional[Mapping[str, Any]] = None,
+        visualizer: Optional["AlgorithmVisualizer"] = None,
+    ) -> AlgorithmTranscript:
+        """Consume events, aggregate a transcript, and update sinks.
+
+        Updates the terminal and optional HTML visualizer while enforcing an
+        all-or-nothing policy.
+
+        Raises:
+          QernelAPIError: With partial transcript on error.
         """
         transcript = AlgorithmTranscript()
-
-        def _print_status(prefix: str, msg: str, level: str = "info") -> None:
-            print(f"{prefix} {msg}")
-            if visualizer is not None:
-                try:
-                    visualizer.update_status(msg, level=level)
-                except Exception:
-                    pass
+        printer = TerminalPrinter()
 
         try:
-            for evt in self.stream_algorithm(algorithm_instance, params=params, parse_json=True):
+            for evt in self.stream_events(
+                algorithm_instance, params=params, parse_json=True
+            ):
                 if isinstance(evt, dict):
                     try:
                         se = StreamEvent.model_validate(evt)
@@ -239,21 +281,13 @@ class QernelClient:
                 transcript.add_event(se)
 
                 if se.type == "start":
-                    _print_status("[start]", se.message or "")
+                    self._print_status(printer, visualizer, "[start]", se.message or "")
                 elif se.type == "status":
                     stage = se.stage or ""
                     msg = se.message or ""
-                    # Determine level by stage suffix
-                    level = "info"
-                    if stage.endswith(":ok"):
-                        level = "success"
-                    elif stage.endswith(":err"):
-                        level = "error"
-
-                    if stage:
-                        _print_status("[status]", f"{stage} {msg}".strip(), level=level)
-                    else:
-                        _print_status("[status]", msg, level=level)
+                    level = self._status_level_from_stage(stage)
+                    full_msg = (f"{stage} {msg}".strip() if stage else msg)
+                    self._print_status(printer, visualizer, "[status]", full_msg, level=level)
 
                     # Update aggregate methods payload on known stages
                     if stage.startswith("get_name:ok") and se.result is not None:
@@ -277,20 +311,10 @@ class QernelClient:
                     )
                 elif se.type == "result":
                     if se.response is not None:
-                        # Decode optional circuit_json_b64 into circuit_json for convenience
+                        # Decode optional artifacts for convenience
                         try:
                             analysis = getattr(se.response, 'analysis', None) or {}
-                            artifacts = (analysis or {}).get('artifacts') or {}
-                            b64 = artifacts.get('circuit_json_b64')
-                            if b64:
-                                try:
-                                    decoded = base64.b64decode(b64).decode('utf-8')
-                                    try:
-                                        artifacts['circuit_json'] = json.loads(decoded)
-                                    except Exception:
-                                        artifacts['circuit_json'] = decoded
-                                except Exception:
-                                    pass
+                            self._decode_circuit_artifacts_in_place(analysis)
                         except Exception:
                             pass
 
@@ -300,19 +324,12 @@ class QernelClient:
                         transcript.class_doc = se.response.class_doc
 
                         # Compact grouped summary to terminal
-                        print("\n=== Result ===")
-                        if transcript.class_name:
-                            print(f"Class: {transcript.class_name}")
-                        if transcript.class_doc:
-                            print(f"Doc: {transcript.class_doc}")
                         mp = transcript.methods
-                        if mp.get_name_result is not None:
-                            print(f"Name: {mp.get_name_result}")
-                        if mp.get_type_result is not None:
-                            print(f"Type: {mp.get_type_result}")
-                        if mp.build_circuit_summary is not None:
-                            print("Circuit (ascii):")
-                            print(mp.build_circuit_summary)
+                        printer.print_result_summary(
+                            class_name=transcript.class_name,
+                            class_doc=transcript.class_doc,
+                            methods=mp.model_dump(),
+                        )
 
                         # Update visualizer final results
                         if visualizer is not None:
@@ -350,33 +367,118 @@ class QernelClient:
                 transcript.ended_at = datetime.utcnow()
             # Wrap unexpected errors with transcript
             raise QernelAPIError(str(e), transcript=transcript.to_jsonable())
+
+    def run_stream(
+        self,
+        algorithm_instance: Algorithm,
+        params: Optional[Mapping[str, Any]] = None,
+        visualize: bool = True,
+        visualizer: Optional["AlgorithmVisualizer"] = None,
+    ) -> AlgorithmTranscript:
+        """Single entry point to stream an algorithm with optional visualization.
+
+        If visualize is True, this manages the GUI lifecycle on the main thread
+        and consumes the SSE stream in pywebview's startup worker via a
+        callback.
+
+        Returns:
+          Aggregated AlgorithmTranscript.
+        """
+        if not visualize:
+            return self.run_stream_with_handler(
+                algorithm_instance, params=params, visualizer=None
+            )
+
+        # Lazily import to avoid circular imports at module import time
+        try:
+            from qernel.vis.visualizer import AlgorithmVisualizer  # type: ignore
+        except Exception:
+            # If visualization is requested but unavailable, fall back to headless
+            return self.run_stream_with_handler(
+                algorithm_instance, params=params, visualizer=None
+            )
+
+        algo_name = None
+        try:
+            algo_name = getattr(algorithm_instance, "get_name", None)
+            algo_name = algo_name() if callable(algo_name) else None
+        except Exception:
+            algo_name = None
+        if not algo_name:
+            algo_name = f"{algorithm_instance.__class__.__name__}"
+
+        vis = visualizer or AlgorithmVisualizer(algorithm_name=str(algo_name))
+
+        transcript: Optional[AlgorithmTranscript] = None
+        error: Optional[Exception] = None
+
+        def _consume_stream() -> None:
+            nonlocal transcript, error
+            try:
+                transcript = self.run_stream_with_handler(
+                    algorithm_instance, params=params, visualizer=vis
+                )
+            except Exception as e:
+                error = e
+
+        # Start the GUI on the main thread; SSE runs in webview's startup worker
+        vis.start_and_run(on_start=_consume_stream)
+
+        if error is not None:
+            # Re-raise, preserving QernelAPIError if that's what occurred
+            if isinstance(error, QernelAPIError):
+                raise error
+            raise QernelAPIError(str(error), transcript=transcript.to_jsonable() if transcript else None)
+
+        if transcript is None:
+            # Should not happen, but ensure we return a valid object.
+            transcript = AlgorithmTranscript()
+        return transcript
     
-    def test_connection(self) -> Dict[str, Any]:
+    def close(self) -> None:
+        """Close underlying HTTP session."""
+        try:
+            self.session.close()
+        except Exception:
+            pass
+    
+    def __enter__(self) -> "QernelClient":
+        return self
+    
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+    
+    def test_connection(self) -> dict[str, Any]:
         """Test the connection to the Qernel API."""
         url = f"{self.config.api_url}/"
-        headers = {
-            'Accept': 'application/json',
-            'x-api-key': self.config.api_key
-        }
-        masked_key = None
-        if self.config.api_key and len(self.config.api_key) >= 8:
-            masked_key = f"{self.config.api_key[:4]}...{self.config.api_key[-4:]}"
-        elif self.config.api_key:
-            masked_key = "[set]"
-        else:
-            masked_key = "[missing]"
-        self.logger.info(f"GET {url} (x-api-key={masked_key})")
+        headers = self._build_headers('application/json')
+        masked_key = self._mask_api_key()
+        self.logger.info("GET %s (x-api-key=%s)", url, masked_key)
         try:
             t0 = time.perf_counter()
-            response = self.session.get(url, headers=headers, timeout=self.config.timeout)
+            response = self.session.get(
+                url, headers=headers, timeout=self.config.timeout
+            )
             dt = time.perf_counter() - t0
-            self.logger.info(f"Connection check status={response.status_code} dt={dt:.3f}s")
+            self.logger.info(
+                "Connection check status=%d dt=%.3fs", response.status_code, dt
+            )
             return {
                 'status': 'success' if response.status_code == 200 else 'error',
-                'message': 'Connection successful' if response.status_code == 200 else f'Connection failed with status {response.status_code}',
-                'response': response.json() if response.status_code == 200 else response.text
+                'message': (
+                    'Connection successful'
+                    if response.status_code == 200
+                    else f'Connection failed with status {response.status_code}'
+                ),
+                'response': (
+                    response.json() if response.status_code == 200 else response.text
+                ),
             }
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"Connection failed: {e}")
-            return {'status': 'error', 'message': f'Connection failed: {str(e)}', 'response': None}
+            self.logger.error("Connection failed: %s", e)
+            return {
+                'status': 'error',
+                'message': f'Connection failed: {str(e)}',
+                'response': None,
+            }
         

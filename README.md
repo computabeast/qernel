@@ -60,9 +60,9 @@ from qernel import Algorithm, QernelClient
 # Create your algorithm instance
 algorithm = MyAlgorithm()
 
-# Create and use the client
+# Create and use the client (streaming API)
 client = QernelClient()
-result = client.run_algorithm(algorithm)
+transcript = client.run_stream(algorithm_instance=algorithm, params={}, visualize=False)
 ```
 
 OR with custom configuration:
@@ -72,7 +72,7 @@ from qernel.core.client import QernelConfig
 
 config = QernelConfig(api_key="your_api_key_here")
 client = QernelClient(config)
-result = client.run_algorithm(algorithm)
+transcript = client.run_stream(algorithm_instance=algorithm, params={}, visualize=False)
 ```
 
 ### Using Visualization
@@ -87,7 +87,7 @@ algorithm = MyAlgorithm()
 
 # Create client and run with real-time visualization
 client = QernelClient()
-result = client.run_algorithm_with_visualization(algorithm)
+transcript = client.run_stream(algorithm_instance=algorithm, params={}, visualize=True)
 ```
 
 ### Supported packages
