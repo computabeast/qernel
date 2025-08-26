@@ -98,7 +98,130 @@ class QernelClient:
             # Convert Mapping to a concrete dict for JSON serialization.
             payload['params'] = dict(params)
         return payload
-    
+
+    # ---- Task extraction helpers ----
+    def _extract_task_specs_from_doc(self, doc: Optional[str]) -> list[dict[str, Any]]:
+        """Heuristically extract task specs from a docstring.
+
+        Returns a list of task spec dicts with keys: id, title, keywords.
+        """
+        if not doc:
+            return []
+        text = (doc or "").lower()
+        specs: list[dict[str, Any]] = []
+        # Resource estimation
+        if ("resource" in text) or ("estimate" in text):
+            specs.append({
+                'id': 'resource_estimation',
+                'title': 'Resource Estimation',
+                # include pipeline-identifying keywords to scope matches
+                'keywords': [
+                    'resource.qualtran', 'qualtran',
+                    'resource', 'estimate', 'resource_estimation'
+                ],
+            })
+        # Error mitigation (Mitiq ZNE)
+        if ("mitiq" in text) or ("zne" in text) or ("error mitigation" in text):
+            specs.append({
+                'id': 'error_mitigation_zne',
+                'title': 'Error Mitigation (Mitiq ZNE)',
+                'keywords': [
+                    'mitigation.mitiq.zne', 'mitiq', 'zne', 'mitigation'
+                ],
+            })
+        # Simulation / histogram
+        if ("simulate" in text) or ("simulation" in text) or ("histogram" in text) or ("shots" in text):
+            specs.append({
+                'id': 'simulation_histogram',
+                'title': 'Simulation (Histogram)',
+                'keywords': [
+                    'execute.simulator', 'simulator', 'execute',
+                    'histogram', 'counts', 'shots'
+                ],
+            })
+        return specs
+
+    def _task_payload_slice(self, analysis: Optional[Mapping[str, Any]], keywords: list[str]) -> dict[str, Any]:
+        """Return a JSON-friendly slice of analysis relevant to a task's keywords.
+        Only include data from matching pipeline steps to avoid cross-task bleed-through.
+        """
+        result: dict[str, Any] = {}
+        if not analysis:
+            return result
+        pipeline = (analysis or {}).get('pipeline')
+        if isinstance(pipeline, list):
+            matched = []
+            for p in pipeline:
+                name = str((p or {}).get('name', '')).lower()
+                if any(kw in name for kw in keywords):
+                    matched.append(p)
+            if matched:
+                # If only one step matched, unwrap its output as primary
+                if len(matched) == 1:
+                    step = matched[0]
+                    out = (step or {}).get('output') or {}
+                    # Keep summary, counts/shots, mitigated/raw if present
+                    sl: dict[str, Any] = {}
+                    if isinstance(out, Mapping):
+                        if 'summary' in out:
+                            sl['summary'] = out['summary']
+                        for k in ('counts', 'shots', 'mitigated_value', 'raw_value', 'metrics'):
+                            if k in out:
+                                sl[k] = out[k]
+                    result = {
+                        'pipeline': [step],
+                        'output': sl or out,
+                    }
+                else:
+                    result = {'pipeline': matched}
+        return result
+
+    def _task_details_from_analysis(self, analysis: Optional[Mapping[str, Any]], keywords: list[str]) -> dict[str, Any]:
+        """Return concise headline details for a task from matching pipeline steps only."""
+        details: dict[str, Any] = {}
+        if not analysis:
+            return details
+        # Dive into pipeline steps that match this task
+        pipeline = (analysis or {}).get('pipeline')
+        if isinstance(pipeline, list):
+            for p in pipeline:
+                name = str((p or {}).get('name', '')).lower()
+                if not any(kw in name for kw in keywords):
+                    continue
+                out = (p or {}).get('output') or {}
+                # Prefer step-specific summary values
+                step_sum = out.get('summary') if isinstance(out, Mapping) else None
+                if isinstance(step_sum, Mapping):
+                    for k in ['t_count', 'qubit_count', 'depth', 'op_counts', 'mitigated_value']:
+                        if k in step_sum:
+                            details[k] = step_sum[k]
+                # Common fields exposed directly in output
+                for k in ['mitigated_value', 'raw_value']:
+                    if k in out:
+                        details[k] = out[k]
+                # Simulation specific fields
+                if 'counts' in out and isinstance(out['counts'], Mapping):
+                    details['counts'] = out['counts']
+                if 'shots' in out:
+                    details['shots'] = out['shots']
+        return details
+
+    def _summarize_tasks(self, build_doc: Optional[str], analysis: Optional[Mapping[str, Any]]) -> list[dict[str, Any]]:
+        specs = self._extract_task_specs_from_doc(build_doc)
+        summary: list[dict[str, Any]] = []
+        for spec in specs:
+            details = self._task_details_from_analysis(analysis, spec['keywords'])
+            payload = self._task_payload_slice(analysis, spec['keywords'])
+            status = 'success' if details or payload else 'info'
+            summary.append({
+                'id': spec['id'],
+                'title': spec['title'],
+                'status': status,
+                'details': details,
+                'json': payload,
+            })
+        return summary
+
     def _iter_sse_events(
         self, response, parse_json: bool
     ) -> Iterator[Union[str, dict[str, Any]]]:
@@ -229,8 +352,6 @@ class QernelClient:
             )
             raise QernelAPIError(f"Streaming request failed: {str(e)}")
 
-    
-
     def stream_algorithm(
         self,
         algorithm_instance: Algorithm,
@@ -300,9 +421,6 @@ class QernelClient:
                         if se.obj_type is not None:
                             transcript.methods.build_circuit_type = se.obj_type
 
-                    # Do not hard-fail on per-pass errors; continue to await final result
-                    # Users can inspect pipeline details in the final result.
-
                 elif se.type == "error":
                     transcript.ended_reason = "error"
                     raise QernelAPIError(
@@ -323,29 +441,40 @@ class QernelClient:
                         transcript.class_name = se.response.class_
                         transcript.class_doc = se.response.class_doc
 
-                        # Compact grouped summary to terminal
+                        # Build task summary from build_circuit doc and analysis
+                        build_doc = transcript.methods.build_circuit_doc
+                        task_summary = self._summarize_tasks(build_doc, se.response.analysis)
+
+                        # Compact grouped summary to terminal (now including tasks)
                         mp = transcript.methods
                         printer.print_result_summary(
                             class_name=transcript.class_name,
                             class_doc=transcript.class_doc,
                             methods=mp.model_dump(),
                         )
+                        if task_summary:
+                            try:
+                                printer.print_task_summary(task_summary)
+                            except Exception:
+                                pass
 
-                        # Update visualizer final results
+                        # Update visualizer final results, injecting task_summary
                         if visualizer is not None:
                             try:
-                                # Prefer full response dict including analysis
                                 full_response = se.response.model_dump(by_alias=True)
+                                if task_summary:
+                                    full_response['task_summary'] = task_summary
                                 visualizer.update_with_results(full_response)
                             except Exception:
                                 try:
-                                    visualizer.update_with_results(
-                                        {
-                                            "class": transcript.class_name,
-                                            "class_doc": transcript.class_doc,
-                                            "methods": mp.model_dump(),
-                                        }
-                                    )
+                                    minimal = {
+                                        "class": transcript.class_name,
+                                        "class_doc": transcript.class_doc,
+                                        "methods": mp.model_dump(),
+                                    }
+                                    if task_summary:
+                                        minimal['task_summary'] = task_summary
+                                    visualizer.update_with_results(minimal)
                                 except Exception:
                                     pass
                 elif se.type == "done":

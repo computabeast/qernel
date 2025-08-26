@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 
 class TerminalPrinter:
@@ -75,6 +75,20 @@ class TerminalPrinter:
         parts = [f"{k}={v}" for k, v in summary.items() if v is not None]
         if parts:
             print("Metrics:", ", ".join(parts))
+
+    def print_task_summary(self, tasks: List[Dict[str, Any]]) -> None:
+        if not tasks:
+            return
+        print(self._c("\n=== Tasks ===", "bold"))
+        for t in tasks:
+            title = t.get('title', 'Task')
+            status = (t.get('status') or 'info').lower()
+            details = t.get('details') or {}
+            tag = self._c("[OK]" if status == 'success' else "[INFO]", 'success' if status == 'success' else 'info')
+            print(f"{tag} {title}")
+            if isinstance(details, dict) and details:
+                for k, v in details.items():
+                    print(f"  - {k}: {v}")
 
 
 

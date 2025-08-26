@@ -52,7 +52,7 @@ STATUS_SECTION_TEMPLATE = """
 <div style=\"background: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px; margin-bottom: 20px;\">
     <div style=\"display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;\">
         <div style=\"font-weight: 600; font-size: 16px;\">Current Status</div>
-        <a href=\"#\" onclick=\"var el=document.getElementById('debug-history'); if(el){{ el.setAttribute('open','open'); el.scrollIntoView({{behavior:'smooth', block:'end'}}); }} return false;\" style=\"font-size: 12px; color: {sub}; text-decoration: underline;\">Open Debug History</a>
+        <a href=\"#\" onclick=\"var el=document.getElementById('debug-history'); el && (el.setAttribute('open','open'), el.scrollIntoView(true)); return false;\" style=\"font-size: 12px; color: {sub}; text-decoration: underline;\">Open Debug History</a>
     </div>
     <div style=\"color: {fg}; font-size: 14px;\">{current_status}</div>
 </div>"""
@@ -85,7 +85,7 @@ STATUS_UPDATE_TEMPLATE = """
 # Results section template (accepts raw HTML content)
 RESULTS_SECTION_TEMPLATE = """
 <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px;">
-    <div style="font-weight: 600; font-size: 16px; margin-bottom: 12px;">Execution Results</div>
+    <div style="font-weight: 600; font-size: 16px; margin-bottom: 12px;">Query Summary</div>
     <div style="color: {fg}; font-size: 14px; line-height: 1.5;">
         {results_content}
     </div>

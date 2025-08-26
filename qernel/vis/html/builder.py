@@ -4,6 +4,7 @@ HTML builder for qernel visualization templates.
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import json as _json
 
 from .constants import (
     COLORS, BASE_HTML_TEMPLATE, HEADER_TEMPLATE, STATUS_SECTION_TEMPLATE,
@@ -92,16 +93,16 @@ class HTMLBuilder:
         # Build results section if available
         results_section = ""
         if final_results:
+            # Tasks first so user intent is clearly addressed
+            tasks_section = HTMLBuilder._build_tasks_section(final_results)
             results_content = HTMLBuilder._format_results_content(final_results)
-            results_section = RESULTS_SECTION_TEMPLATE.format(
-                fg=COLORS["fg"],
-                results_content=results_content
-            )
+            summary_card = HTMLBuilder._collapsible_card("Query Summary", results_content)
+            results_section = tasks_section + summary_card
 
-            # Optional analysis section
-            analysis_section = HTMLBuilder._build_analysis_section(final_results)
-            if analysis_section:
-                results_section += analysis_section
+            # Collapsible JSON details card
+            json_details = HTMLBuilder._build_json_details(final_results)
+            if json_details:
+                results_section += json_details
         
         # Build code snippets section if available
         code_snippets_section = ""
@@ -226,10 +227,6 @@ class HTMLBuilder:
         Returns:
             Formatted results string
         """
-        # Expect results shaped like:
-        # {"class": str, "class_doc": str, "methods": {...}}
-        # We intentionally do not display the class name in the UI per spec.
-        # klass = results.get("class")
         class_doc = results.get("class_doc")
         methods = results.get("methods") or {}
 
@@ -239,7 +236,6 @@ class HTMLBuilder:
         circuit_text = methods.get("build_circuit_summary")
         build_doc = methods.get("build_circuit_doc")
 
-        # Build simple HTML with a boxed circuit preview
         parts: List[str] = []
         if class_doc:
             parts.append(f"<div style=\"color:{COLORS['sub']};margin-top:4px\">{HTMLBuilder._escape_html(str(class_doc))}</div>")
@@ -264,107 +260,79 @@ class HTMLBuilder:
         return "".join(parts) if parts else "<div>No additional status information available</div>"
 
     @staticmethod
-    def _build_analysis_section(results: Dict[str, Any]) -> str:
+    def _build_json_details(results: Dict[str, Any]) -> str:
+        # Build a compact JSON view that merges task_summary (if any) and analysis
+        tasks = results.get("task_summary") or []
         analysis = results.get("analysis") or {}
-        if not analysis:
+        if not tasks and not analysis:
             return ""
+        merged = {"task_summary": tasks} if tasks else {}
+        if analysis:
+            merged["analysis"] = analysis
+        json_str = _json.dumps(merged, indent=2, ensure_ascii=False)
+        esc = HTMLBuilder._escape_html(json_str)
+        inner = (
+            f"<pre style=\"font-size:12px;line-height:1.35;background:{COLORS['circuit_bg']};border:1px solid {COLORS['sep']};border-radius:8px;padding:10px;overflow:auto;margin:0;white-space:pre-wrap\">{esc}</pre>"
+        )
+        return HTMLBuilder._collapsible_card("Query Details (JSON)", inner)
 
-        parts: List[str] = []
-
-        # Summary metrics badges
-        summary = analysis.get("summary") or {}
-        badges = []
-        if summary:
-            for key in ["t_count", "qubit_count", "depth"]:
-                if key in summary and summary.get(key) is not None:
-                    badges.append({"text": f"{key}: {summary.get(key)}"})
-        badges_html = HTMLBuilder.build_stats_badges(badges) if badges else ""
-
-        # Pipeline table-like list
-        pipeline = analysis.get("pipeline") or []
-        pipeline_rows = []
-        for p in pipeline:
-            name = p.get("name", "")
-            status = p.get("status", "")
-            dur = p.get("duration_ms")
-            dur_str = f"{dur:.1f} ms" if isinstance(dur, (int, float)) else ""
-            # brief output status/error
-            brief = ""
-            out = p.get("output") or {}
-            if isinstance(out, dict):
-                if out.get("status") == "error" and out.get("error"):
-                    brief = str(out.get("error"))
-                elif out.get("summary"):
-                    brief = str(out.get("summary"))
-            code = p.get("code_snippet")
-
+    @staticmethod
+    def _build_tasks_section(results: Dict[str, Any]) -> str:
+        tasks = results.get("task_summary") or []
+        if not tasks:
+            return ""
+        rows: List[str] = []
+        for t in tasks:
+            title = str(t.get('title', 'Task'))
+            status = (t.get('status') or 'info').lower()
+            details = t.get('details') or {}
+            task_json = t.get('json') or {}
             color = {
-                "ok": COLORS["success"],
-                "error": COLORS["error"],
-                "warning": COLORS["warning"],
-            }.get(status, COLORS["info"])
-
+                'success': COLORS['success'],
+                'error': COLORS['error'],
+                'warning': COLORS['warning'],
+            }.get(status, COLORS['info'])
             row = (
-                f"<div style=\"display:flex;gap:8px;align-items:center;margin:6px 0;padding:8px;"
+                f"<div style=\"display:flex;gap:8px;align-items:flex-start;margin:6px 0;padding:8px;"
                 f"border:1px solid {COLORS['sep']};border-radius:6px;background:rgba(255,255,255,0.02)\">"
                 f"<span style=\"display:inline-block;width:8px;height:8px;border-radius:9999px;background:{color}\"></span>"
-                f"<div style=\"flex:1\"><div style=\"font-weight:600;font-size:13px\">{HTMLBuilder._escape_html(name)}</div>"
-                f"<div style=\"font-size:12px;color:{COLORS['sub']}\">{HTMLBuilder._escape_html(brief) if brief else ''}</div></div>"
-                f"<div style=\"font-size:12px;color:{COLORS['sub']}\">{HTMLBuilder._escape_html(status)}</div>"
-                f"<div style=\"font-size:12px;color:{COLORS['sub']};min-width:70px;text-align:right\">{dur_str}</div>"
-                f"</div>"
+                f"<div style=\"flex:1\"><div style=\"font-weight:600;font-size:13px\">{HTMLBuilder._escape_html(title)}</div>"
             )
-            # Optional collapsible code
-            if code:
+            if isinstance(details, dict) and details:
+                kv = []
+                for k, v in details.items():
+                    kv.append(f"<div style=\"font-size:12px;color:{COLORS['sub']}\"><strong>{HTMLBuilder._escape_html(str(k))}:</strong> {HTMLBuilder._escape_html(str(v))}</div>")
+                row += "".join(kv)
+            if isinstance(task_json, dict) and task_json:
+                j = _json.dumps(task_json, indent=2, ensure_ascii=False)
+                esc = HTMLBuilder._escape_html(j)
                 row += (
-                    f"<details style=\"margin:-2px 0 6px 16px\"><summary style=\"cursor:pointer;color:{COLORS['sub']};font-size:12px\">Show code</summary>"
-                    f"<pre style=\"font-size:11px;line-height:1.3;background:{COLORS['circuit_bg']};border:1px solid {COLORS['sep']};border-radius:6px;padding:8px;overflow:auto;white-space:pre\">{HTMLBuilder._escape_html(code)}</pre>"
+                    f"<details style=\"margin-top:6px\"><summary style=\"cursor:pointer;color:{COLORS['sub']};font-size:12px\">Show result (JSON)</summary>"
+                    f"<pre style=\"font-size:11px;line-height:1.3;background:{COLORS['circuit_bg']};border:1px solid {COLORS['sep']};border-radius:6px;padding:8px;overflow:auto;white-space:pre-wrap\">{esc}</pre>"
                     f"</details>"
                 )
-            pipeline_rows.append(row)
-
-        pipeline_html = "".join(pipeline_rows)
-
-        # Artifacts badges
-        artifacts = (analysis.get("artifacts") or {})
-        artifact_badges = []
-        if artifacts.get("circuit_json_b64") is not None:
-            artifact_badges.append({"text": "artifact: circuit_json (b64)"})
-        artifacts_html = HTMLBuilder.build_stats_badges(artifact_badges) if artifact_badges else ""
-
-        # Reproduction script (collapsible)
-        repro = (analysis.get("reproduction") or {}).get("script")
-        repro_html = ""
-        if repro:
-            repro_html = (
-                f"<details style=\"margin-top:10px\">"
-                f"<summary style=\"cursor:pointer;color:{COLORS['sub']};font-size:12px\">Show reproduction script</summary>"
-                f"<pre style=\"font-size:11px;line-height:1.3;background:{COLORS['circuit_bg']};border:1px solid {COLORS['sep']};border-radius:6px;padding:8px;overflow:auto;white-space:pre-wrap\">{HTMLBuilder._escape_html(repro)}</pre>"
-                f"</details>"
-            )
-
-        # Assemble analysis card
-        inner = []
-        inner.append("<div style=\"font-weight:600;font-size:16px;margin-bottom:8px\">Analysis</div>")
-        if badges_html:
-            inner.append(f"<div style=\"margin-bottom:8px\">{badges_html}</div>")
-        if artifacts_html:
-            inner.append(f"<div style=\"margin-bottom:8px\">{artifacts_html}</div>")
-        if pipeline_html:
-            inner.append(pipeline_html)
-        if repro_html:
-            inner.append(repro_html)
-
-        if not inner:
-            return ""
-
+            row += "</div></div>"
+            rows.append(row)
         card = (
-            f"<div style=\"background: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px; margin-top: 16px;\">"
-            f"{''.join(inner)}"
+            f"<div style=\"background: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px; margin-top: 10px;\">"
+            f"<div style=\"font-weight:600;font-size:16px;margin-bottom:8px\">Tasks</div>"
+            f"{''.join(rows)}"
             f"</div>"
         )
         return card
-    
+
+    @staticmethod
+    def _collapsible_card(title: str, inner_html: str) -> str:
+        """Render a generic collapsible card with a title and HTML content."""
+        return (
+            f"<div style=\"background: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px; margin-top: 16px;\">"
+            f"<details>"
+            f"<summary style=\"cursor:pointer;font-weight:600;font-size:16px;color:{COLORS['fg']}\">{HTMLBuilder._escape_html(title)}</summary>"
+            f"<div style=\"margin-top:10px;color:{COLORS['fg']}\">{inner_html}</div>"
+            f"</details>"
+            f"</div>"
+        )
+
     @staticmethod
     def _escape_html(text: str) -> str:
         """
