@@ -21,7 +21,8 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
 ]
 dependencies = [
-    "cirq>=1.0.0",
+    "cirq-core>=1.0",
+    "cirq-web>=1.0"
     "pyyaml>=6.0",
     "requests>=2.25.0",
     "typing-extensions>=4.0.0",
