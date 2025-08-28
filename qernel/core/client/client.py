@@ -1,4 +1,15 @@
-"""Client for interacting with the Qernel resource estimation API."""
+"""Client for interacting with the Qernel resource estimation API.
+
+# Sections
+1) Imports
+2) Helpers (artifact decode, task summary)
+3) Formatting utilities (terminal logger)
+4) Client class (public API):
+   - stream_events (HTTP + SSE)
+   - run_stream_with_handler (consume + sinks)
+   - run_stream (visualize orchestration)
+   - connection utilities
+"""
 
 import base64
 import logging
@@ -8,7 +19,7 @@ import sys
 import time
 from datetime import datetime
 from collections.abc import Mapping
-from typing import Any, Optional, TYPE_CHECKING, Iterator, Union
+from typing import Any, Optional, Iterator, Union
 
 import requests
 import cloudpickle
@@ -16,6 +27,15 @@ import cloudpickle
 from qernel.core.client.config import QernelConfig, QernelAPIError
 from qernel.core.algorithm import Algorithm
 from qernel.core.client.models import StreamEvent, AlgorithmTranscript
+from qernel.vis.terminal import TerminalPrinter
+
+# Optional: visualizer may be unavailable in some environments
+try:
+    from qernel.vis.visualizer import AlgorithmVisualizer  # type: ignore
+except Exception:  # pragma: no cover
+    AlgorithmVisualizer = None  # type: ignore
+
+# --- Helpers ---------------------------------------------------------------
 
 def _decode_circuit_artifacts_in_place(analysis: Mapping[str, Any]) -> None:
     try:
@@ -106,10 +126,7 @@ def _summarize_tasks(build_doc: Optional[str], analysis: Optional[Mapping[str, A
         summary.append({'id': spec['id'],'title': spec['title'],'status': status,'details': details,'json': payload})
     return summary
 
-from qernel.vis.terminal import TerminalPrinter
-
-if TYPE_CHECKING:
-    from qernel.vis.visualizer import AlgorithmVisualizer
+ 
 
 
 def _isatty(stream) -> bool:
@@ -117,6 +134,8 @@ def _isatty(stream) -> bool:
         return stream.isatty()
     except Exception:
         return False
+
+# --- Formatting utilities --------------------------------------------------
 
 class _BlueDotFormatter(logging.Formatter):
     """Minimal formatter that prints a small icon instead of [LEVEL].
@@ -151,6 +170,8 @@ class _BlueDotFormatter(logging.Formatter):
         msg = record.getMessage()
         return f"{icon} {msg}"
 
+
+# --- Client ----------------------------------------------------------------
 
 class QernelClient:
     """Client for submitting quantum algorithms to the Qernel API.
@@ -266,38 +287,74 @@ class QernelClient:
             "POST %s (stream=True, timeout=%ss)", url, self.config.stream_timeout
         )
         try:
-            with self.session.post(
-                url,
-                json=json_payload,
-                headers=headers,
-                stream=True,
-                timeout=self.config.stream_timeout,
-            ) as response:
-                if response.status_code != 200:
-                    body_preview = response.text[:300]
-                    raise QernelAPIError(
-                        (
-                            "Streaming request failed: %d - %s"
-                            % (response.status_code, body_preview)
-                        ),
-                        response.status_code,
-                        response.text,
-                    )
-                # SSE line iterator
-                for line in response.iter_lines(decode_unicode=True):
-                    if not line:
-                        continue
-                    if isinstance(line, str) and line.startswith("data: "):
-                        data_str = line[6:]
-                        if parse_json:
-                            try:
-                                yield json.loads(data_str)
+            # Warmup spinner and retry/backoff for origin warm-ups (e.g., 504s)
+            tprinter = TerminalPrinter()
+            tprinter.start_warmup()
+            start = time.perf_counter()
+            connected = False
+            backoff = 2.0
+
+            while True:
+                remaining = self.config.stream_timeout - (time.perf_counter() - start)
+                if remaining <= 0:
+                    raise QernelAPIError("Streaming request timed out while warming up origin")
+
+                try:
+                    with self.session.post(
+                        url,
+                        json=json_payload,
+                        headers=headers,
+                        stream=True,
+                        timeout=remaining,
+                    ) as response:
+                        if response.status_code != 200:
+                            # Common warmup codes: 502/503/504 – retry within total timeout
+                            if response.status_code in (502, 503, 504):
+                                # brief sleep then retry, keeping spinner running
+                                sleep_s = min(backoff, max(0.5, remaining))
+                                time.sleep(sleep_s)
+                                backoff = min(backoff * 2.0, 10.0)
                                 continue
+                            body_preview = response.text[:300]
+                            raise QernelAPIError(
+                                (
+                                    "Streaming request failed: %d - %s"
+                                    % (response.status_code, body_preview)
+                                ),
+                                response.status_code,
+                                response.text,
+                            )
+
+                        # First bytes received – stop warmup
+                        if not connected:
+                            try:
+                                tprinter.finish_warmup(success=True)
                             except Exception:
                                 pass
-                        yield data_str
-                    else:
-                        yield line
+                            connected = True
+
+                        # SSE line iterator
+                        for line in response.iter_lines(decode_unicode=True):
+                            if not line:
+                                continue
+                            if isinstance(line, str) and line.startswith("data: "):
+                                data_str = line[6:]
+                                if parse_json:
+                                    try:
+                                        yield json.loads(data_str)
+                                        continue
+                                    except Exception:
+                                        pass
+                                yield data_str
+                            else:
+                                yield line
+                        break  # finished normally
+                except requests.exceptions.RequestException:
+                    # Network hiccup – retry within total timeout
+                    sleep_s = min(backoff, max(0.5, remaining))
+                    time.sleep(sleep_s)
+                    backoff = min(backoff * 2.0, 10.0)
+                    continue
         except QernelAPIError as e:
             # Re-log with context then re-raise
             self.logger.error("Streaming request failed: %s", e.message)
@@ -305,6 +362,16 @@ class QernelClient:
         except requests.exceptions.RequestException as e:
             self.logger.error("Streaming request error: %s: %s", e.__class__.__name__, e)
             raise QernelAPIError(f"Streaming request failed: {str(e)}")
+        finally:
+            # Ensure warmup spinner is cleared
+            try:
+                if 'connected' in locals() and not connected:
+                    tprinter.finish_warmup(success=False)
+                else:
+                    # If already finished successfully, this is a no-op
+                    tprinter.finish_warmup(success=True)
+            except Exception:
+                pass
 
     def stream_algorithm(
         self,
@@ -325,7 +392,7 @@ class QernelClient:
         self,
         algorithm_instance: Algorithm,
         params: Optional[Mapping[str, Any]] = None,
-        visualizer: Optional["AlgorithmVisualizer"] = None,
+        visualizer: Optional[Any] = None,
     ) -> AlgorithmTranscript:
         """Consume events, aggregate a transcript, and update sinks.
 
@@ -490,7 +557,7 @@ class QernelClient:
         algorithm_instance: Algorithm,
         params: Optional[Mapping[str, Any]] = None,
         visualize: bool = True,
-        visualizer: Optional["AlgorithmVisualizer"] = None,
+        visualizer: Optional[Any] = None,
     ) -> AlgorithmTranscript:
         """Single entry point to stream an algorithm with optional visualization.
 
@@ -506,15 +573,6 @@ class QernelClient:
                 algorithm_instance, params=params, visualizer=None
             )
 
-        # Lazily import to avoid circular imports at module import time
-        try:
-            from qernel.vis.visualizer import AlgorithmVisualizer  # type: ignore
-        except Exception:
-            # If visualization is requested but unavailable, fall back to headless
-            return self.run_stream_with_handler(
-                algorithm_instance, params=params, visualizer=None
-            )
-
         algo_name = None
         try:
             algo_name = getattr(algorithm_instance, "get_name", None)
@@ -524,7 +582,12 @@ class QernelClient:
         if not algo_name:
             algo_name = f"{algorithm_instance.__class__.__name__}"
 
-        vis = visualizer or AlgorithmVisualizer(algorithm_name=str(algo_name))
+        # If visualizer library is unavailable and none provided, fall back to headless
+        if AlgorithmVisualizer is None and visualizer is None:
+            return self.run_stream_with_handler(
+                algorithm_instance, params=params, visualizer=None
+            )
+        vis = visualizer or AlgorithmVisualizer(algorithm_name=str(algo_name))  # type: ignore[name-defined]
 
         transcript: Optional[AlgorithmTranscript] = None
 

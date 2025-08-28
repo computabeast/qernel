@@ -37,26 +37,34 @@ def _ansi(code: str, text: str, enable: bool) -> str:
 class _Spinner:
     """Draw an ephemeral spinner line to stderr with ANSI cursor ops."""
 
-    def __init__(self, interval: float = 0.08, colorize: bool = True):
+    def __init__(self, interval: float = 0.08, colorize: bool = True, show_elapsed: bool = False):
         self.interval = interval
         self.colorize = colorize
+        self.show_elapsed = show_elapsed
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._label = ""
         self._frame = 0
+        self._t0: Optional[float] = None
 
     def start(self, label: str) -> None:
         self._label = label
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
+        self._t0 = time.time()
 
     def _run(self) -> None:
         while not self._stop.is_set():
             ch = _SPINNER_FRAMES[self._frame % len(_SPINNER_FRAMES)]
             if self.colorize:
                 ch = _ansi("36", ch, True)  # cyan spinner
-            sys.stderr.write("\r" + f"{ch} {self._label}" + _CLEAR_EOL)
+            if self.show_elapsed and self._t0 is not None:
+                elapsed = time.time() - self._t0
+                label = f"{self._label} {elapsed:.1f}s"
+            else:
+                label = self._label
+            sys.stderr.write("\r" + f"{ch} {label}" + _CLEAR_EOL)
             sys.stderr.flush()
             self._frame += 1
             time.sleep(self.interval)
@@ -82,7 +90,7 @@ class TerminalPrinter:
 
     # Detects "<name>:<suffix>" where suffix ∈ {start, call, ok, err, error, fail, failed}
     _STEP_RE = re.compile(
-        r"^\s*(?P<name>.+):(?P<suffix>start|call|ok|err(?:or)?|fail(?:ed)?)\b(?:[:\s]*(?P<rest>.*))?$",
+        r"^\s*(?P<name>.+):(?P<suffix>start|call|ok|err(?:or)?|fail(?:ed)?|skipp(?:ed)?|skipped)\b(?:[:\s]*(?P<rest>.*))?$",
         re.IGNORECASE,
     )
 
@@ -219,6 +227,9 @@ class TerminalPrinter:
             if suffix in ("err", "error", "fail", "failed"):
                 self._end_step("error", name, note=(rest or None))
                 return
+            if suffix in ("skipped", "skipp", "skipped"):
+                self._end_step("info", name, note=(rest or None))
+                return
 
         # Plain line via Rich (no raw ANSI)
         if (level or "info").lower() == "info":
@@ -275,5 +286,41 @@ class TerminalPrinter:
         if self._spinner:
             self._spinner.stop_and_clear()
             self._spinner = None
+        self._active_name = None
+        self._active_label = None
+
+    # ---- Warmup helpers (explicit spinner with elapsed seconds) ----
+
+    def start_warmup(self, label: Optional[str] = None) -> None:
+        if self._spinner:
+            self._spinner.stop_and_clear()
+            self._spinner = None
+        # Default label with gray parenthetical hint
+        if label is None:
+            gray_hint = _ansi("90", "(slower after periods of inactivity)", self.enable_color)
+            label = f"server warm up: {gray_hint}"
+        self._active_name = "warmup"
+        self._active_label = label
+        if self._ephemeral_ok:
+            self._spinner = _Spinner(colorize=self.enable_color, show_elapsed=True)
+            self._spinner.start(label=label)
+        else:
+            self.console.print(f"[cyan]{label}[/]")
+
+    def finish_warmup(self, success: bool = True) -> None:
+        if not self._active_name == "warmup":
+            return
+        # Compose replacement line using ANSI mark like other steps
+        symbol = self._mark_ansi('success' if success else 'error')
+        note = "connected" if success else "failed"
+        label_text = self._active_label or "warmup"
+        # Avoid double colon if label already includes one
+        sep = " " if ":" in label_text else ": "
+        line = f"{symbol} {label_text}{sep}{note}"
+        if self._spinner:
+            self._spinner.stop_and_replace(line)
+            self._spinner = None
+        else:
+            self.console.print(line)
         self._active_name = None
         self._active_label = None

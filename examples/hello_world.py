@@ -36,6 +36,7 @@ class HelloWorldAlgorithm(Algorithm):
 
 
 def main() -> int:
+    # api_url="http://127.0.0.1:8000",
     client = QernelClient(QernelConfig(api_url="http://127.0.0.1:8000", stream_timeout=120))
     _ = client.run_stream(algorithm_instance=HelloWorldAlgorithm(), params={}, visualize=False)
 
