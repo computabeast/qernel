@@ -1,26 +1,115 @@
 """Client for interacting with the Qernel resource estimation API."""
 
 import base64
-import json
 import logging
+import json
 import os
 import sys
 import time
 from datetime import datetime
-from collections.abc import Iterator, Mapping
-from typing import Any, Optional, TYPE_CHECKING, Union, Mapping as TypingMapping
+from collections.abc import Mapping
+from typing import Any, Optional, TYPE_CHECKING, Iterator, Union
 
 import requests
 import cloudpickle
 
-from qernel.core.client.exceptions import QernelAPIError
-from qernel.core.client.config import QernelConfig
+from qernel.core.client.config import QernelConfig, QernelAPIError
 from qernel.core.algorithm import Algorithm
 from qernel.core.client.models import StreamEvent, AlgorithmTranscript
 
+def _decode_circuit_artifacts_in_place(analysis: Mapping[str, Any]) -> None:
+    try:
+        artifacts = (analysis or {}).get('artifacts') or {}
+        b64 = artifacts.get('circuit_json_b64')
+        if not b64:
+            return
+        try:
+            decoded = base64.b64decode(b64).decode('utf-8')
+            try:
+                artifacts['circuit_json'] = json.loads(decoded)
+            except Exception:
+                artifacts['circuit_json'] = decoded
+        except Exception:
+            pass
+    except Exception:
+        pass
 
-from qernel.vis.visualizer import AlgorithmVisualizer
+def _summarize_tasks(build_doc: Optional[str], analysis: Optional[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    def _extract_task_specs_from_doc(doc: Optional[str]) -> list[dict[str, Any]]:
+        if not doc:
+            return []
+        text = (doc or "").lower()
+        specs: list[dict[str, Any]] = []
+        if ("resource" in text) or ("estimate" in text):
+            specs.append({'id': 'resource_estimation','title': 'Resource Estimation','keywords': ['resource.qualtran','qualtran','resource','estimate','resource_estimation']})
+        if ("mitiq" in text) or ("zne" in text) or ("error mitigation" in text):
+            specs.append({'id': 'error_mitigation_zne','title': 'Error Mitigation (Mitiq ZNE)','keywords': ['mitigation.mitiq.zne','mitiq','zne','mitigation']})
+        if ("simulate" in text) or ("simulation" in text) or ("histogram" in text) or ("shots" in text):
+            specs.append({'id': 'simulation_histogram','title': 'Simulation (Histogram)','keywords': ['execute.simulator','simulator','execute','histogram','counts','shots']})
+        return specs
+    def _task_payload_slice(analysis: Optional[Mapping[str, Any]], keywords: list[str]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        if not analysis:
+            return result
+        pipeline = (analysis or {}).get('pipeline')
+        if isinstance(pipeline, list):
+            matched = []
+            for p in pipeline:
+                name = str((p or {}).get('name', '')).lower()
+                if any(kw in name for kw in keywords):
+                    matched.append(p)
+            if matched:
+                if len(matched) == 1:
+                    step = matched[0]
+                    out = (step or {}).get('output') or {}
+                    sl: dict[str, Any] = {}
+                    if isinstance(out, Mapping):
+                        if 'summary' in out:
+                            sl['summary'] = out['summary']
+                        for k in ('counts','shots','mitigated_value','raw_value','metrics'):
+                            if k in out:
+                                sl[k] = out[k]
+                    result = {'pipeline': [step], 'output': sl or out}
+                else:
+                    result = {'pipeline': matched}
+        return result
+    def _task_details_from_analysis(analysis: Optional[Mapping[str, Any]], keywords: list[str]) -> dict[str, Any]:
+        details: dict[str, Any] = {}
+        if not analysis:
+            return details
+        pipeline = (analysis or {}).get('pipeline')
+        if isinstance(pipeline, list):
+            for p in pipeline:
+                name = str((p or {}).get('name', '')).lower()
+                if not any(kw in name for kw in keywords):
+                    continue
+                out = (p or {}).get('output') or {}
+                step_sum = out.get('summary') if isinstance(out, Mapping) else None
+                if isinstance(step_sum, Mapping):
+                    for k in ['t_count','qubit_count','depth','op_counts','mitigated_value']:
+                        if k in step_sum:
+                            details[k] = step_sum[k]
+                for k in ['mitigated_value','raw_value']:
+                    if k in out:
+                        details[k] = out[k]
+                if 'counts' in out and isinstance(out['counts'], Mapping):
+                    details['counts'] = out['counts']
+                if 'shots' in out:
+                    details['shots'] = out['shots']
+        return details
+    specs = _extract_task_specs_from_doc(build_doc)
+    summary: list[dict[str, Any]] = []
+    for spec in specs:
+        details = _task_details_from_analysis(analysis, spec['keywords'])
+        payload = _task_payload_slice(analysis, spec['keywords'])
+        status = 'success' if details or payload else 'info'
+        summary.append({'id': spec['id'],'title': spec['title'],'status': status,'details': details,'json': payload})
+    return summary
+
 from qernel.vis.terminal import TerminalPrinter
+
+if TYPE_CHECKING:
+    from qernel.vis.visualizer import AlgorithmVisualizer
 
 
 def _isatty(stream) -> bool:
@@ -28,7 +117,6 @@ def _isatty(stream) -> bool:
         return stream.isatty()
     except Exception:
         return False
-
 
 class _BlueDotFormatter(logging.Formatter):
     """Minimal formatter that prints a small icon instead of [LEVEL].
@@ -91,9 +179,6 @@ class QernelClient:
                 "Configuration validation failed: %s", e
             )
 
-    def _get_base_url(self) -> str:
-        return self.config.api_url.rstrip('/')
-
     def _mask_api_key(self) -> str:
         api_key = self.config.api_key
         if api_key and len(api_key) >= 8:
@@ -104,12 +189,8 @@ class QernelClient:
             return "[missing]"
 
     def _build_headers(self, accept: str) -> dict[str, str]:
-        headers: dict[str, str] = {
-            'Content-Type': 'application/json',
-            'Accept': accept,
-        }
-        if self.config.api_key:
-            headers['x-api-key'] = self.config.api_key
+        headers = dict(self.config.get_headers())
+        headers['Accept'] = accept
         return headers
     
     def _serialize_algorithm(self, algorithm_instance: Algorithm) -> str:
@@ -124,11 +205,6 @@ class QernelClient:
             self.logger.error("Algorithm serialization failed: %s", e)
             raise
     
-    def _build_stream_endpoint(self) -> str:
-        """Return the absolute URL for the streaming endpoint."""
-        base_url = self._get_base_url()
-        return f"{base_url}/stream"
-    
     def _prepare_stream_payload(
         self,
         algorithm_instance: Algorithm,
@@ -142,166 +218,6 @@ class QernelClient:
             payload['params'] = dict(params)
         return payload
 
-    # ---- Task extraction helpers ----
-    def _extract_task_specs_from_doc(self, doc: Optional[str]) -> list[dict[str, Any]]:
-        """Heuristically extract task specs from a docstring.
-
-        Returns a list of task spec dicts with keys: id, title, keywords.
-        """
-        if not doc:
-            return []
-        text = (doc or "").lower()
-        specs: list[dict[str, Any]] = []
-        # Resource estimation
-        if ("resource" in text) or ("estimate" in text):
-            specs.append({
-                'id': 'resource_estimation',
-                'title': 'Resource Estimation',
-                # include pipeline-identifying keywords to scope matches
-                'keywords': [
-                    'resource.qualtran', 'qualtran',
-                    'resource', 'estimate', 'resource_estimation'
-                ],
-            })
-        # Error mitigation (Mitiq ZNE)
-        if ("mitiq" in text) or ("zne" in text) or ("error mitigation" in text):
-            specs.append({
-                'id': 'error_mitigation_zne',
-                'title': 'Error Mitigation (Mitiq ZNE)',
-                'keywords': [
-                    'mitigation.mitiq.zne', 'mitiq', 'zne', 'mitigation'
-                ],
-            })
-        # Simulation / histogram
-        if ("simulate" in text) or ("simulation" in text) or ("histogram" in text) or ("shots" in text):
-            specs.append({
-                'id': 'simulation_histogram',
-                'title': 'Simulation (Histogram)',
-                'keywords': [
-                    'execute.simulator', 'simulator', 'execute',
-                    'histogram', 'counts', 'shots'
-                ],
-            })
-        return specs
-
-    def _task_payload_slice(self, analysis: Optional[Mapping[str, Any]], keywords: list[str]) -> dict[str, Any]:
-        """Return a JSON-friendly slice of analysis relevant to a task's keywords.
-        Only include data from matching pipeline steps to avoid cross-task bleed-through.
-        """
-        result: dict[str, Any] = {}
-        if not analysis:
-            return result
-        pipeline = (analysis or {}).get('pipeline')
-        if isinstance(pipeline, list):
-            matched = []
-            for p in pipeline:
-                name = str((p or {}).get('name', '')).lower()
-                if any(kw in name for kw in keywords):
-                    matched.append(p)
-            if matched:
-                # If only one step matched, unwrap its output as primary
-                if len(matched) == 1:
-                    step = matched[0]
-                    out = (step or {}).get('output') or {}
-                    # Keep summary, counts/shots, mitigated/raw if present
-                    sl: dict[str, Any] = {}
-                    if isinstance(out, Mapping):
-                        if 'summary' in out:
-                            sl['summary'] = out['summary']
-                        for k in ('counts', 'shots', 'mitigated_value', 'raw_value', 'metrics'):
-                            if k in out:
-                                sl[k] = out[k]
-                    result = {
-                        'pipeline': [step],
-                        'output': sl or out,
-                    }
-                else:
-                    result = {'pipeline': matched}
-        return result
-
-    def _task_details_from_analysis(self, analysis: Optional[Mapping[str, Any]], keywords: list[str]) -> dict[str, Any]:
-        """Return concise headline details for a task from matching pipeline steps only."""
-        details: dict[str, Any] = {}
-        if not analysis:
-            return details
-        # Dive into pipeline steps that match this task
-        pipeline = (analysis or {}).get('pipeline')
-        if isinstance(pipeline, list):
-            for p in pipeline:
-                name = str((p or {}).get('name', '')).lower()
-                if not any(kw in name for kw in keywords):
-                    continue
-                out = (p or {}).get('output') or {}
-                # Prefer step-specific summary values
-                step_sum = out.get('summary') if isinstance(out, Mapping) else None
-                if isinstance(step_sum, Mapping):
-                    for k in ['t_count', 'qubit_count', 'depth', 'op_counts', 'mitigated_value']:
-                        if k in step_sum:
-                            details[k] = step_sum[k]
-                # Common fields exposed directly in output
-                for k in ['mitigated_value', 'raw_value']:
-                    if k in out:
-                        details[k] = out[k]
-                # Simulation specific fields
-                if 'counts' in out and isinstance(out['counts'], Mapping):
-                    details['counts'] = out['counts']
-                if 'shots' in out:
-                    details['shots'] = out['shots']
-        return details
-
-    def _summarize_tasks(self, build_doc: Optional[str], analysis: Optional[Mapping[str, Any]]) -> list[dict[str, Any]]:
-        specs = self._extract_task_specs_from_doc(build_doc)
-        summary: list[dict[str, Any]] = []
-        for spec in specs:
-            details = self._task_details_from_analysis(analysis, spec['keywords'])
-            payload = self._task_payload_slice(analysis, spec['keywords'])
-            status = 'success' if details or payload else 'info'
-            summary.append({
-                'id': spec['id'],
-                'title': spec['title'],
-                'status': status,
-                'details': details,
-                'json': payload,
-            })
-        return summary
-
-    def _iter_sse_events(
-        self, response, parse_json: bool
-    ) -> Iterator[Union[str, dict[str, Any]]]:
-        """Yield parsed SSE events from a requests streaming response."""
-        for line in response.iter_lines(decode_unicode=True):
-            if not line:
-                continue
-            if isinstance(line, str) and line.startswith("data: "):
-                data_str = line[6:]
-                if parse_json:
-                    try:
-                        yield json.loads(data_str)
-                        continue
-                    except Exception:
-                        pass
-                yield data_str
-            else:
-                yield line
-
-    def _decode_circuit_artifacts_in_place(self, analysis: Mapping[str, Any]) -> None:
-        """Decode circuit_json_b64 into circuit_json in-place if present."""
-        try:
-            artifacts = (analysis or {}).get('artifacts') or {}
-            b64 = artifacts.get('circuit_json_b64')
-            if not b64:
-                return
-            try:
-                decoded = base64.b64decode(b64).decode('utf-8')
-                try:
-                    artifacts['circuit_json'] = json.loads(decoded)
-                except Exception:
-                    artifacts['circuit_json'] = decoded
-            except Exception:
-                pass
-        except Exception:
-            pass
-
     def _status_level_from_stage(self, stage: str) -> str:
         """Return a status level derived from a stage suffix."""
         if stage.endswith(":ok"):
@@ -310,25 +226,7 @@ class QernelClient:
             return "error"
         return "info"
 
-    def _print_status(
-        self,
-        printer: "TerminalPrinter",
-        visualizer: Optional["AlgorithmVisualizer"],
-        prefix: str,
-        msg: str,
-        level: str = "info",
-    ) -> None:
-        """Print status to terminal and optional visualizer."""
-        if prefix and prefix != "[status]":
-            printer.print_status(prefix.strip("[]"), msg, level=level)
-        else:
-            printer.print_status("", msg, level=level)
-        if visualizer is not None:
-            try:
-                visualizer.update_status(msg, level=level)
-            except Exception:
-                # Visualization errors are non-fatal.
-                pass
+    # (status printing handled inline in run_stream_with_handler for clarity)
 
     def stream_events(
         self,
@@ -352,47 +250,60 @@ class QernelClient:
             cls.__name__,
         )
 
-        url = self._build_stream_endpoint()
-        headers = self._build_headers('text/event-stream')
         try:
             payload = self._prepare_stream_payload(algorithm_instance, params)
         except Exception as e:
-            self.logger.error(
-                "Failed to serialize algorithm for streaming: %s", e
-            )
+            self.logger.error("Failed to serialize algorithm for streaming: %s", e)
             raise
 
+        # Build request
+        base_url = (self.config.api_url or "").rstrip("/")
+        url = f"{base_url}/stream"
+        headers = dict(self.config.get_headers())
+        headers['Accept'] = 'text/event-stream'
+        json_payload = payload
         self.logger.info(
             "POST %s (stream=True, timeout=%ss)", url, self.config.stream_timeout
         )
         try:
             with self.session.post(
                 url,
-                json=payload,
+                json=json_payload,
                 headers=headers,
                 stream=True,
                 timeout=self.config.stream_timeout,
             ) as response:
                 if response.status_code != 200:
                     body_preview = response.text[:300]
-                    self.logger.error(
-                        "Streaming request failed: %d - %s...",
-                        response.status_code,
-                        body_preview,
-                    )
                     raise QernelAPIError(
                         (
                             "Streaming request failed: %d - %s"
-                            % (response.status_code, response.text)
+                            % (response.status_code, body_preview)
                         ),
                         response.status_code,
                         response.text,
                     )
-                yield from self._iter_sse_events(response, parse_json=parse_json)
+                # SSE line iterator
+                for line in response.iter_lines(decode_unicode=True):
+                    if not line:
+                        continue
+                    if isinstance(line, str) and line.startswith("data: "):
+                        data_str = line[6:]
+                        if parse_json:
+                            try:
+                                yield json.loads(data_str)
+                                continue
+                            except Exception:
+                                pass
+                        yield data_str
+                    else:
+                        yield line
+        except QernelAPIError as e:
+            # Re-log with context then re-raise
+            self.logger.error("Streaming request failed: %s", e.message)
+            raise
         except requests.exceptions.RequestException as e:
-            self.logger.error(
-                "Streaming request error: %s: %s", e.__class__.__name__, e
-            )
+            self.logger.error("Streaming request error: %s: %s", e.__class__.__name__, e)
             raise QernelAPIError(f"Streaming request failed: {str(e)}")
 
     def stream_algorithm(
@@ -426,6 +337,7 @@ class QernelClient:
         """
         transcript = AlgorithmTranscript()
         printer = TerminalPrinter()
+        viz_sink = visualizer  # pass-through; we call methods directly if present
         # Stash a final pipeline summary until the result arrives
         pipeline_done_summary: Optional[Mapping[str, Any]] = None
 
@@ -447,13 +359,23 @@ class QernelClient:
                 transcript.add_event(se)
 
                 if se.type == "start":
-                    self._print_status(printer, visualizer, "[start]", se.message or "")
+                    printer.print_status("", se.message or "", level="info")
+                    if viz_sink is not None:
+                        try:
+                            viz_sink.update_status(se.message or "", level="info")
+                        except Exception:
+                            pass
                 elif se.type == "status":
                     stage = se.stage or ""
                     msg = se.message or ""
                     level = self._status_level_from_stage(stage)
                     full_msg = (f"{stage} {msg}".strip() if stage else msg)
-                    self._print_status(printer, visualizer, "[status]", full_msg, level=level)
+                    printer.print_status("", full_msg, level=level)
+                    if viz_sink is not None:
+                        try:
+                            viz_sink.update_status(full_msg, level=level)
+                        except Exception:
+                            pass
 
                     # Update aggregate methods payload on known stages
                     if stage.startswith("get_name:ok") and se.result is not None:
@@ -493,7 +415,7 @@ class QernelClient:
                         # Decode optional artifacts for convenience
                         try:
                             analysis = getattr(se.response, 'analysis', None) or {}
-                            self._decode_circuit_artifacts_in_place(analysis)
+                            _decode_circuit_artifacts_in_place(analysis)
                         except Exception:
                             pass
 
@@ -504,9 +426,15 @@ class QernelClient:
 
                         # Build task summary from build_circuit doc and analysis
                         build_doc = transcript.methods.build_circuit_doc
-                        task_summary = self._summarize_tasks(build_doc, se.response.analysis)
+                        task_summary = _summarize_tasks(build_doc, se.response.analysis)
 
-                        # Compact grouped summary to terminal (now including tasks)
+                        # Notify sinks with results
+                        full_response: Optional[dict[str, Any]] = None
+                        try:
+                            full_response = se.response.model_dump(by_alias=True)
+                        except Exception:
+                            pass
+                        # Terminal summary
                         mp = transcript.methods
                         printer.print_result_summary(
                             class_name=transcript.class_name,
@@ -518,26 +446,20 @@ class QernelClient:
                                 printer.print_task_summary(task_summary)
                             except Exception:
                                 pass
-
-                        # Update visualizer final results, injecting task_summary
-                        if visualizer is not None:
+                        if viz_sink is not None:
                             try:
-                                full_response = se.response.model_dump(by_alias=True)
-                                if task_summary:
-                                    full_response['task_summary'] = task_summary
-                                visualizer.update_with_results(full_response)
-                            except Exception:
-                                try:
-                                    minimal = {
+                                if full_response is None:
+                                    full_response = {
                                         "class": transcript.class_name,
                                         "class_doc": transcript.class_doc,
-                                        "methods": mp.model_dump(),
+                                        "methods": transcript.methods.model_dump(),
                                     }
-                                    if task_summary:
-                                        minimal['task_summary'] = task_summary
-                                    visualizer.update_with_results(minimal)
-                                except Exception:
-                                    pass
+                                if task_summary:
+                                    full_response = dict(full_response)
+                                    full_response["task_summary"] = task_summary
+                                viz_sink.update_with_results(full_response)
+                            except Exception:
+                                pass
                 elif se.type == "done":
                     transcript.ended_reason = "done"
                     transcript.ended_at = datetime.utcnow()
@@ -557,6 +479,11 @@ class QernelClient:
                 transcript.ended_at = datetime.utcnow()
             # Wrap unexpected errors with transcript
             raise QernelAPIError(str(e), transcript=transcript.to_jsonable())
+        finally:
+            try:
+                printer.finish()
+            except Exception:
+                pass
 
     def run_stream(
         self,
@@ -600,16 +527,16 @@ class QernelClient:
         vis = visualizer or AlgorithmVisualizer(algorithm_name=str(algo_name))
 
         transcript: Optional[AlgorithmTranscript] = None
-        error: Optional[Exception] = None
 
         def _consume_stream() -> None:
-            nonlocal transcript, error
+            nonlocal transcript
             try:
                 transcript = self.run_stream_with_handler(
                     algorithm_instance, params=params, visualizer=vis
                 )
-            except Exception as e:
-                error = e
+            except Exception:
+                # Ignore; transcript remains None and will be defaulted
+                pass
 
         # Start the GUI on the main thread; SSE runs in webview's startup worker
         vis.start_and_run(on_start=_consume_stream)

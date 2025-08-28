@@ -66,7 +66,7 @@ class AlgorithmVisualizer:
             text_select=True
         )
         
-        print("Opening visualization window...")
+        # Opening the window should be silent to avoid duplicate console logs
         
         # Start webview on main thread (this will block until window closes)
         try:
@@ -91,9 +91,6 @@ class AlgorithmVisualizer:
         update = StatusUpdate(message, level=level)
         self.status_updates.append(update)
         self.current_status = message
-        
-        # Update both terminal and webview
-        print(f"[{level.upper()}] {message}")
         
         # Update webview content
         self._update_webview()

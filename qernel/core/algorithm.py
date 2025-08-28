@@ -34,12 +34,3 @@ class Algorithm(ABC):
             A Cirq Circuit object
         """
         pass
-    
-    def validate_params(self, params: Dict[str, Any]) -> None:
-        """
-        Optional validation of input parameters.
-        
-        Override this method to add custom parameter validation.
-        The backend will call this before build_circuit.
-        """
-        pass

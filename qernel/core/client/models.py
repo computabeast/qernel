@@ -82,5 +82,3 @@ class AlgorithmTranscript(BaseModel):
 
     def to_jsonable(self) -> Dict[str, Any]:
         return self.model_dump(by_alias=True)
-
-

@@ -2,8 +2,7 @@
 Qernel Client package for submitting quantum algorithms to the resource estimation API.
 """
 
-from .exceptions import QernelAPIError
-from .config import QernelConfig
+from .config import QernelConfig, QernelAPIError
 from .client import QernelClient
 from .models import MethodsPayload, AlgorithmResponse, AlgorithmTranscript, StreamEvent
 
