@@ -22,11 +22,11 @@ classifiers = [
 ]
 dependencies = [
     "cirq-core>=1.0",
-    "cirq-web>=1.0"
+    "cirq-web>=1.0",
     "pyyaml>=6.0",
     "requests>=2.25.0",
     "typing-extensions>=4.0.0",
-    "pywebview>=4.0.0",
+    "pywebview>=4.0.0"
 ]
 
 [project.optional-dependencies]

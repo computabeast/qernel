@@ -45,7 +45,7 @@ class StreamEvent(BaseModel):
     stage: Optional[str] = None
     error: Optional[str] = None
     result: Optional[Any] = None
-    summary: Optional[str] = None
+    summary: Optional[Any] = None
     obj_type: Optional[str] = None
     response: Optional[AlgorithmResponse] = None
     class_field: Optional[str] = Field(default=None, alias="class")

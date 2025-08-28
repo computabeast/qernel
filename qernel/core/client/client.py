@@ -3,10 +3,12 @@
 import base64
 import json
 import logging
+import os
+import sys
 import time
 from datetime import datetime
 from collections.abc import Iterator, Mapping
-from typing import Any, Optional, TYPE_CHECKING, Union
+from typing import Any, Optional, TYPE_CHECKING, Union, Mapping as TypingMapping
 
 import requests
 import cloudpickle
@@ -21,6 +23,47 @@ from qernel.vis.visualizer import AlgorithmVisualizer
 from qernel.vis.terminal import TerminalPrinter
 
 
+def _isatty(stream) -> bool:
+    try:
+        return stream.isatty()
+    except Exception:
+        return False
+
+
+class _BlueDotFormatter(logging.Formatter):
+    """Minimal formatter that prints a small icon instead of [LEVEL].
+
+    INFO  -> cyan •  message
+    WARN  -> yellow ! message
+    ERROR -> red ✗   message
+    DEBUG -> dim   · message
+    """
+
+    def __init__(self, enable_color: Optional[bool] = None) -> None:
+        super().__init__()
+        if enable_color is None:
+            enable_color = _isatty(sys.stderr) and os.getenv("NO_COLOR") is None
+        self.enable_color = enable_color
+
+    def _ansi(self, code: str, text: str) -> str:
+        return f"\x1b[{code}m{text}\x1b[0m" if self.enable_color else text
+
+    def _icon_for(self, levelno: int) -> str:
+        if levelno >= logging.ERROR:
+            return self._ansi("31", "✗")  # red
+        if levelno >= logging.WARNING:
+            return self._ansi("33", "!")  # yellow
+        if levelno <= logging.DEBUG:
+            return self._ansi("90", "·")  # gray dot
+        # INFO (default)
+        return self._ansi("36", "•")      # cyan dot
+
+    def format(self, record: logging.LogRecord) -> str:
+        icon = self._icon_for(record.levelno)
+        msg = record.getMessage()
+        return f"{icon} {msg}"
+
+
 class QernelClient:
     """Client for submitting quantum algorithms to the Qernel API.
 
@@ -31,10 +74,10 @@ class QernelClient:
     def __init__(self, config: Optional[QernelConfig] = None):
         self.config = config or QernelConfig()
         self.logger = logging.getLogger(__name__)
-        # Ensure logs show up for users by default
+        # Ensure logs show up for users by default with blue-dot formatting
         if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            handler.setFormatter(logging.Formatter('[%(levelname)s] %(message)s'))
+            handler = logging.StreamHandler(stream=sys.stderr)
+            handler.setFormatter(_BlueDotFormatter())
             self.logger.addHandler(handler)
         self.logger.setLevel(logging.INFO)
 
@@ -383,6 +426,8 @@ class QernelClient:
         """
         transcript = AlgorithmTranscript()
         printer = TerminalPrinter()
+        # Stash a final pipeline summary until the result arrives
+        pipeline_done_summary: Optional[Mapping[str, Any]] = None
 
         try:
             for evt in self.stream_events(
@@ -421,6 +466,10 @@ class QernelClient:
                         if se.obj_type is not None:
                             transcript.methods.build_circuit_type = se.obj_type
 
+                    # Stash final pipeline summary for later merge into analysis
+                    if stage.startswith("pipeline:done") and isinstance(se.summary, Mapping):
+                        pipeline_done_summary = se.summary
+
                 elif se.type == "error":
                     transcript.ended_reason = "error"
                     raise QernelAPIError(
@@ -429,6 +478,18 @@ class QernelClient:
                     )
                 elif se.type == "result":
                     if se.response is not None:
+                        # Merge any final summary into analysis before further processing
+                        try:
+                            analysis = getattr(se.response, 'analysis', None) or {}
+                            if isinstance(analysis, Mapping) and pipeline_done_summary is not None:
+                                merged = dict(analysis)
+                                sum0 = dict(merged.get('summary') or {})
+                                sum0.update(dict(pipeline_done_summary))
+                                merged['summary'] = sum0
+                                se.response.analysis = merged
+                        except Exception:
+                            pass
+
                         # Decode optional artifacts for convenience
                         try:
                             analysis = getattr(se.response, 'analysis', None) or {}
@@ -552,12 +613,6 @@ class QernelClient:
 
         # Start the GUI on the main thread; SSE runs in webview's startup worker
         vis.start_and_run(on_start=_consume_stream)
-
-        if error is not None:
-            # Re-raise, preserving QernelAPIError if that's what occurred
-            if isinstance(error, QernelAPIError):
-                raise error
-            raise QernelAPIError(str(error), transcript=transcript.to_jsonable() if transcript else None)
 
         if transcript is None:
             # Should not happen, but ensure we return a valid object.

@@ -22,19 +22,22 @@ class HelloWorldAlgorithm(Algorithm):
         """
         # Create a simple 3-qubit circuit
         q = cirq.LineQubit.range(3)
-        
+
+        # Hadamard on first qubit
+        # Toffoli gate
+        # T dagger on third qubit
         circuit = cirq.Circuit(
-            cirq.H(q[0]),           # Hadamard on first qubit
-            cirq.CCX(q[0], q[1], q[2]),  # Toffoli gate
-            cirq.T(q[2]) ** -1,     # T dagger on third qubit
+            cirq.H(q[0]),           
+            cirq.CCX(q[0], q[1], q[2]),
+            cirq.T(q[2]) ** -1,     
         )
         
         return circuit
 
 
 def main() -> int:
-    client = QernelClient(QernelConfig(api_url="http://127.0.0.1:8080", stream_timeout=120))
-    _ = client.run_stream(algorithm_instance=HelloWorldAlgorithm(), params={}, visualize=True)
+    client = QernelClient(QernelConfig(api_url="http://127.0.0.1:8000", stream_timeout=120))
+    _ = client.run_stream(algorithm_instance=HelloWorldAlgorithm(), params={}, visualize=False)
 
 if __name__ == "__main__":
     main()
