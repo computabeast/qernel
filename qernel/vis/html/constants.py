@@ -4,15 +4,15 @@ HTML template constants for qernel visualization.
 
 # Color scheme (dark theme)
 COLORS = {
-    "fg": "#e5e7eb",      # Foreground text
-    "sub": "#9ca3af",     # Subtitle/secondary text
-    "sep": "#374151",     # Separator lines
-    "bg": "#222",         # Background
+    "fg": "#e5e7eb",  # Foreground text
+    "sub": "#9ca3af",  # Subtitle/secondary text
+    "sep": "#374151",  # Separator lines
+    "bg": "#222",  # Background
     "circuit_bg": "#0f172a",  # Circuit background
-    "info": "#3b82f6",    # Info level color
-    "warning": "#f59e0b", # Warning level color
-    "error": "#ef4444",   # Error level color
-    "success": "#10b981", # Success level color
+    "info": "#3b82f6",  # Info level color
+    "warning": "#f59e0b",  # Warning level color
+    "error": "#ef4444",  # Error level color
+    "success": "#10b981",  # Success level color
 }
 
 # Base HTML template
@@ -41,27 +41,38 @@ BASE_HTML_TEMPLATE = """<!doctype html>
 </body>
 </html>"""
 
-# Header section template
+# Header section template (subtitle removed)
 HEADER_TEMPLATE = """
-<div style="font-weight: 700; font-size: 24px; margin-bottom: 8px;">
+<div style="font-weight: 700; font-size: 24px; margin-bottom: 16px;">
     {algorithm_name}
-</div>
-<div style="font-size: 14px; color: {sub}; margin-bottom: 20px;">
-    Algorithm Execution Monitor
 </div>"""
 
-# Current status section template
+# Current status section template (simplified, with link to open debug history)
 STATUS_SECTION_TEMPLATE = """
-<div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-    <div style="font-weight: 600; font-size: 16px; margin-bottom: 8px;">Current Status</div>
-    <div style="color: {fg}; font-size: 14px;">{current_status}</div>
+<div style=\"background: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px; margin-bottom: 20px;\">
+    <div style=\"display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;\">
+        <div style=\"font-weight: 600; font-size: 16px;\">Current Status</div>
+        <a href=\"#\" onclick=\"var el=document.getElementById('debug-history'); el && (el.setAttribute('open','open'), el.scrollIntoView(true)); return false;\" style=\"font-size: 12px; color: {sub}; text-decoration: underline;\">Open Debug History</a>
+    </div>
+    <div style=\"color: {fg}; font-size: 14px;\">{current_status}</div>
 </div>"""
 
-# Status history section template
+# Status history section template (accordion, fixed bottom-right, gray)
 STATUS_HISTORY_SECTION_TEMPLATE = """
-<div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-    <div style="font-weight: 600; font-size: 16px; margin-bottom: 12px;">Status History</div>
-    {status_updates}
+<div style="position: fixed; bottom: 16px; right: 16px; width: 380px; background: #2b2b2b; color: {fg}; border: 1px solid {sep}; border-radius: 8px; padding: 12px 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 9999;">
+    <details id="debug-history">
+        <summary style="cursor: pointer; display:flex; align-items:center; gap:8px; font-weight: 600; font-size: 14px; color: {sub}; list-style: none;">
+            <span style="display:inline-flex; width:16px; height:16px; color:{sub}">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                    <path d="M20 8h-3.17l1.59-1.59a1 1 0 10-1.41-1.41L14 8.01V4a1 1 0 10-2 0v4.01L6.99 5.01a1 1 0 10-1.41 1.41L7.17 8H4a1 1 0 100 2h3.59L6 11.59a1 1 0 101.41 1.41L12 8.41l4.59 4.59A1 1 0 0018 13a1 1 0 00.71-1.71L16.41 10H20a1 1 0 100-2z" fill="currentColor"/>
+                </svg>
+            </span>
+            Debug: Status History
+        </summary>
+        <div style="margin-top: 10px; max-height: 40vh; overflow:auto;">
+            {status_updates}
+        </div>
+    </details>
 </div>"""
 
 # Individual status update template
@@ -71,12 +82,12 @@ STATUS_UPDATE_TEMPLATE = """
     <div style="color: {fg}; font-size: 14px;">{message}</div>
 </div>"""
 
-# Results section template
+# Results section template (accepts raw HTML content)
 RESULTS_SECTION_TEMPLATE = """
 <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 16px;">
-    <div style="font-weight: 600; font-size: 16px; margin-bottom: 12px;">Execution Results</div>
+    <div style="font-weight: 600; font-size: 16px; margin-bottom: 12px;">Query Summary</div>
     <div style="color: {fg}; font-size: 14px; line-height: 1.5;">
-        <pre style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px; overflow-x: auto; margin: 0;">{results_content}</pre>
+        {results_content}
     </div>
 </div>"""
 
