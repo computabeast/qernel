@@ -4,15 +4,15 @@ HTML template constants for qernel visualization.
 
 # Color scheme (dark theme)
 COLORS = {
-    "fg": "#e5e7eb",      # Foreground text
-    "sub": "#9ca3af",     # Subtitle/secondary text
-    "sep": "#374151",     # Separator lines
-    "bg": "#222",         # Background
+    "fg": "#e5e7eb",  # Foreground text
+    "sub": "#9ca3af",  # Subtitle/secondary text
+    "sep": "#374151",  # Separator lines
+    "bg": "#222",  # Background
     "circuit_bg": "#0f172a",  # Circuit background
-    "info": "#3b82f6",    # Info level color
-    "warning": "#f59e0b", # Warning level color
-    "error": "#ef4444",   # Error level color
-    "success": "#10b981", # Success level color
+    "info": "#3b82f6",  # Info level color
+    "warning": "#f59e0b",  # Warning level color
+    "error": "#ef4444",  # Error level color
+    "success": "#10b981",  # Success level color
 }
 
 # Base HTML template

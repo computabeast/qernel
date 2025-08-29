@@ -47,6 +47,9 @@ class StreamEvent(BaseModel):
     result: Optional[Any] = None
     summary: Optional[Any] = None
     obj_type: Optional[str] = None
+    # Storage/status extensions
+    artifact: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
     response: Optional[AlgorithmResponse] = None
     class_field: Optional[str] = Field(default=None, alias="class")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
@@ -57,11 +60,13 @@ class StreamEvent(BaseModel):
 
 class TranscriptEvent(BaseModel):
     """A serializable transcript event that preserves the raw payload and timing."""
+
     event: StreamEvent
 
 
 class AlgorithmTranscript(BaseModel):
     """Aggregated transcript for a streaming run."""
+
     events: List[TranscriptEvent] = Field(default_factory=list)
     response: Optional[AlgorithmResponse] = None
     methods: MethodsPayload = Field(default_factory=MethodsPayload)

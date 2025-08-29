@@ -24,11 +24,13 @@ rich_tb(show_locals=False)
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 _CLEAR_EOL = "\x1b[K"
 
+
 def _isatty(stream) -> bool:
     try:
         return stream.isatty()
     except Exception:
         return False
+
 
 def _ansi(code: str, text: str, enable: bool) -> str:
     return f"\x1b[{code}m{text}\x1b[0m" if enable else text
@@ -37,7 +39,9 @@ def _ansi(code: str, text: str, enable: bool) -> str:
 class _Spinner:
     """Draw an ephemeral spinner line to stderr with ANSI cursor ops."""
 
-    def __init__(self, interval: float = 0.08, colorize: bool = True, show_elapsed: bool = False):
+    def __init__(
+        self, interval: float = 0.08, colorize: bool = True, show_elapsed: bool = False
+    ):
         self.interval = interval
         self.colorize = colorize
         self.show_elapsed = show_elapsed
@@ -120,6 +124,8 @@ class TerminalPrinter:
         self._active_name: Optional[str] = None
         self._active_label: Optional[str] = None
         self._spinner: Optional[_Spinner] = None
+        # Lines to print after a step concludes (avoids mixing with spinner line)
+        self._pending_notes: dict[str, list[str]] = {}
 
     # ---------- helpers ----------
 
@@ -145,7 +151,7 @@ class TerminalPrinter:
             return _ansi("31", "✗", self.enable_color)  # red
         if kind == "warning":
             return _ansi("33", "!", self.enable_color)  # yellow
-        return _ansi("36", "•", self.enable_color)      # cyan
+        return _ansi("36", "•", self.enable_color)  # cyan
 
     def _divider(self) -> str:
         return f"[bright_black]{self._DIV_CHAR * self._DIV_WIDTH}[/bright_black]"
@@ -165,13 +171,18 @@ class TerminalPrinter:
 
         self._active_name = name
         self._active_label = label
+        # reset pending notes for this step
+        if name in self._pending_notes:
+            del self._pending_notes[name]
         if self._ephemeral_ok:
             self._spinner = _Spinner(colorize=self.enable_color)
             self._spinner.start(label=label)
         else:
             self.console.print(f"[cyan]{label}[/]")
 
-    def _end_step(self, status: str, name: Optional[str], note: Optional[str] = None) -> None:
+    def _end_step(
+        self, status: str, name: Optional[str], note: Optional[str] = None
+    ) -> None:
         note = f" {note}" if note else ""
         label_text = name or (self._active_label or "")
 
@@ -188,12 +199,20 @@ class TerminalPrinter:
         else:
             # Normal path -> Rich markup
             if status == "success":
-                self.console.print(f"{self._mark_console('success')} {label_text}: ok{note}")
+                self.console.print(
+                    f"{self._mark_console('success')} {label_text}: ok{note}"
+                )
             elif status == "error":
-                self.console.print(f"{self._mark_console('error')} {label_text}: failed{note}")
+                self.console.print(
+                    f"{self._mark_console('error')} {label_text}: failed{note}"
+                )
             else:
                 self.console.print(f"{self._mark_console('info')} {label_text}{note}")
 
+        # Print any pending notes captured during spinner
+        if name and name in self._pending_notes:
+            for line in self._pending_notes.pop(name):
+                self.console.print(line)
         self._active_name = None
         self._active_label = None
 
@@ -231,6 +250,17 @@ class TerminalPrinter:
                 self._end_step("info", name, note=(rest or None))
                 return
 
+        # Storage-specific formatting (status lines that include artifact/details)
+        if stage.startswith("storage:"):
+            # Normalize levels
+            st_level = (level or "info").lower()
+            if ":ok" in stage:
+                st_level = "success"
+            elif ":err" in stage:
+                st_level = "error"
+            self.console.print(f"{self._mark_console(st_level)} {text}")
+            return
+
         # Plain line via Rich (no raw ANSI)
         if (level or "info").lower() == "info":
             self.console.print(f"{self._mark_console('info')} {text}")
@@ -238,7 +268,13 @@ class TerminalPrinter:
             tag = self._tag(level)
             self.console.print(f"{tag} {text}")
 
-    def print_result_summary(self, *, class_name: Optional[str], class_doc: Optional[str], methods: Dict[str, Any]) -> None:
+    def print_result_summary(
+        self,
+        *,
+        class_name: Optional[str],
+        class_doc: Optional[str],
+        methods: Dict[str, Any],
+    ) -> None:
         # One blank line after the debug/status area
         self.console.print()
         # name,type line (bold only name)
@@ -274,7 +310,11 @@ class TerminalPrinter:
         for t in tasks:
             title = t.get("title", "Task")
             status = (t.get("status") or "info").lower()
-            tag = "[bold green][OK][/bold green]" if status == "success" else "[bold cyan][INFO][/bold cyan]"
+            tag = (
+                "[bold green][OK][/bold green]"
+                if status == "success"
+                else "[bold cyan][INFO][/bold cyan]"
+            )
             self.console.print(f"{tag} {title}")
             details = t.get("details") or {}
             if isinstance(details, dict) and details:
@@ -297,7 +337,9 @@ class TerminalPrinter:
             self._spinner = None
         # Default label with gray parenthetical hint
         if label is None:
-            gray_hint = _ansi("90", "(slower after periods of inactivity)", self.enable_color)
+            gray_hint = _ansi(
+                "90", "(slower after periods of inactivity)", self.enable_color
+            )
             label = f"server warm up: {gray_hint}"
         self._active_name = "warmup"
         self._active_label = label
@@ -311,7 +353,7 @@ class TerminalPrinter:
         if not self._active_name == "warmup":
             return
         # Compose replacement line using ANSI mark like other steps
-        symbol = self._mark_ansi('success' if success else 'error')
+        symbol = self._mark_ansi("success" if success else "error")
         note = "connected" if success else "failed"
         label_text = self._active_label or "warmup"
         # Avoid double colon if label already includes one
@@ -324,3 +366,33 @@ class TerminalPrinter:
             self.console.print(line)
         self._active_name = None
         self._active_label = None
+
+    # ---- Storage detail helpers (for storage:* status lines) ----
+
+    def print_storage_details(
+        self, *, artifact: Optional[str], details: Optional[Dict[str, Any]]
+    ) -> None:
+        """Render storage artifact/details lines in a compact readable form."""
+        lines: List[str] = []
+        if artifact:
+            lines.append(f"{self._mark_console('info')} artifact={artifact}")
+        if isinstance(details, dict) and details:
+            parts: List[str] = []
+            for k in ("bucket", "paths", "size"):
+                if k in details:
+                    parts.append(f"{k}={details[k]}")
+            if not parts:
+                parts = [f"{k}={v}" for k, v in details.items()]
+            if parts:
+                lines.append("  " + ", ".join(parts))
+
+        if not lines:
+            return
+
+        # If a spinner is active, defer lines until the step concludes
+        if self._spinner and self._active_name:
+            self._pending_notes.setdefault(self._active_name, []).extend(lines)
+            return
+
+        for line in lines:
+            self.console.print(line)

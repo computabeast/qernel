@@ -3,3 +3,4 @@ __pycache__/
 *.egg-info/
 test_client.py
 .env
+examples/bernstein_vazirani.py
