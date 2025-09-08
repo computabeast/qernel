@@ -849,15 +849,122 @@ class QernelClient:
     def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
 
+    def load_artifacts_from_response(
+        self, 
+        response: Any,
+        artifact_names: Optional[list[str]] = None
+    ) -> dict[str, Any]:
+        """Download artifacts using paths from a server response.
+        
+        Args:
+            response: Server response object containing artifact_storage information
+            artifact_names: Optional list of artifact names to download.
+                          Defaults to ["trial_result", "simulator_state"]
+        
+        Returns:
+            Dictionary mapping artifact names to their deserialized content
+        """
+        # Extract artifact storage info from response
+        try:
+            analysis = getattr(response, "analysis", None) or {}
+            pipeline = analysis.get("pipeline", [])
+            
+            # Find the execute.simulator step which contains artifact_storage
+            artifact_storage = None
+            for step in pipeline:
+                if step.get("name") == "execute.simulator":
+                    output = step.get("output", {})
+                    artifact_storage = output.get("artifact_storage", {})
+                    break
+            
+            if not artifact_storage:
+                raise QernelAPIError("No artifact storage information found in response")
+                
+            stored_artifacts = artifact_storage.get("stored_artifacts", {})
+            if not stored_artifacts:
+                raise QernelAPIError("No stored artifacts found in response")
+                
+        except (AttributeError, KeyError) as e:
+            raise QernelAPIError(f"Failed to extract artifact paths from response: {e}")
+        
+        # Default to standard artifacts if none specified
+        if artifact_names is None:
+            artifact_names = ["trial_result", "simulator_state"]
+        
+        # Filter to only download requested artifacts that exist
+        available_artifacts = [name for name in artifact_names if name in stored_artifacts]
+        if not available_artifacts:
+            return {}
+        
+        # Extract base URL and user_id from the first artifact path
+        first_path = next(iter(stored_artifacts.values()))
+        # Path format: "artifacts/{user_id}/{job_id}/{artifact_name}.pkl.gz"
+        path_parts = first_path.split("/")
+        if len(path_parts) < 4:
+            raise QernelAPIError(f"Invalid artifact path format: {first_path}")
+        
+        user_id = path_parts[1]  # e.g., "e831e513-b95a-4211-b11a-d686a4b91dfb"
+        job_id = path_parts[2]   # e.g., "242"
+        
+        base_url = (self.config.api_url or "").rstrip("/")
+        headers = self._build_headers("application/octet-stream")
+        
+        printer = TerminalPrinter()
+        warm = self._warmup_cls(printer=printer)
+        warm.start()
+        deadline = time.perf_counter() + max(
+            self.config.stream_timeout, self.config.timeout, 60
+        )
+        
+        results: dict[str, Any] = {}
+        
+        try:
+            for idx, name in enumerate(available_artifacts):
+                artifact_path = stored_artifacts[name]
+                # Construct download URL using the full path from response
+                url = f"{base_url}/artifacts/{artifact_path}"
+                
+                backoff_range = (2.0, 10.0) if idx == 0 else (1.0, 6.0)
+                response = self._get_with_retry_until_deadline(
+                    url=url,
+                    headers=headers,
+                    deadline=deadline,
+                    backoff_range=backoff_range,
+                )
+                
+                warm.mark_connected()
+                self._print_get_request_status(printer, url)
+                results[name] = self._deserialize_artifact_content(response.content)
+            
+            return results
+        except QernelAPIError as exc:
+            raise exc
+        finally:
+            warm.finish()
+
     def load_artifacts_sequential(
-        self, job_id: str, artifact_names: list[str]
+        self, 
+        job_id: str, 
+        artifact_names: Optional[list[str]] = None
     ) -> dict[str, Any]:
         """Download multiple artifacts sequentially using a single warm-up spinner.
 
         The first request performs warm-up with spinner + retry/backoff. Subsequent
         requests are issued without re-starting the warm-up spinner, but still
         retry on common transient errors within the remaining timeout window.
+
+        Args:
+            job_id: The job ID to download artifacts for
+            artifact_names: Optional list of artifact names to download. 
+                          Defaults to ["trial_result", "simulator_state"]
+
+        Returns:
+            Dictionary mapping artifact names to their deserialized content
         """
+        # Default to standard artifacts if none specified
+        if artifact_names is None:
+            artifact_names = ["trial_result", "simulator_state"]
+        
         if not artifact_names:
             return {}
 

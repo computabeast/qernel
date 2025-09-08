@@ -33,13 +33,21 @@ def main() -> int:
     )
 
     job_id = "197"
-    trial_result = client.load_artifact(job_id, "trial_result")
-    simulator_state = client.load_artifact(job_id, "simulator_state")
+    # Option 1: Load standard artifacts (trial_result, simulator_state)
+    artifacts = client.load_artifacts_sequential(job_id)
+    trial_result = artifacts["trial_result"]
+    simulator_state = artifacts["simulator_state"]
 
+    # Option 2: Load specific artifacts (if you need custom ones)
+    # artifacts = client.load_artifacts_sequential(
+    #     job_id, ["trial_result", "simulator_state", "custom_artifact"]
+    # )
+
+    # Use the artifacts
     circuit = simulator_state.get("circuit")
-    print(circuit)
+    if circuit:
+        print(f"Circuit has {len(circuit)} operations")
 
-    # Retrieve existing measurement results
     print(trial_result.histogram(key="m"))
 
     # Continue where you left off

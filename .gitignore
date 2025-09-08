@@ -4,3 +4,4 @@ __pycache__/
 test_client.py
 .env
 examples/bernstein_vazirani.py
+examples/unbaked/

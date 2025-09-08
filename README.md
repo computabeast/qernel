@@ -111,6 +111,7 @@ transcript = client.run_stream(algorithm_instance=algorithm, params={}, visualiz
 <td>Circuit design</td>
 <td>
 <a href="https://github.com/quantumlib/cirq">Cirq</a><br>
+<a href="https://github.com/quantumlib/Stim">Stim</a><br>
 <a href="https://github.com/Qiskit/qiskit">Qiskit</a> (TODO)<br>
 <a href="https://github.com/PennyLaneAI/pennylane">PennyLane</a> (TODO)
 </td>
