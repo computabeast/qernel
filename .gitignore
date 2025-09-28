@@ -1,0 +1,21 @@
+.cursor
+
+
+# Added by cargo
+
+/target
+
+# Rust/Build
+/target
+**/*.rs.bk
+Cargo.lock
+
+# OS
+.DS_Store
+
+# Env
+.env
+.env.*
+
+# Node
+node_modules/
