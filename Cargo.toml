@@ -2,6 +2,13 @@
 name = "qernel"
 version = "0.1.0-alpha"
 edition = "2024"
+description = "An agentic CLI to prototype and share quantum code."
+readme = "README.md"
+homepage = "https://qernel.sh"
+repository = "https://github.com/computabeast/qernel"
+license = "Apache-2.0"
+keywords = ["quantumcomputing", "cli", "quantum", "algorithms", "ai"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 anyhow = "1"
