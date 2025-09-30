@@ -23,8 +23,8 @@ thiserror = "1"
 which = "6"
 owo-colors = "4"
 supports-color = "3"
-qernel_codex_core = { package = "qernel-codex-core-shim", path = "src/exe/core", version = "0.1.0-alpha" }
-qernel_apply_patch = { package = "qernel-apply-patch-shim", path = "src/exe/apply-patch", version = "0.1.0-alpha" }
+qernel-codex-core-shim = { path = "src/exe/core", version = "0.1.0-alpha" }
+qernel-apply-patch-shim = { path = "src/exe/apply-patch", version = "0.1.0-alpha" }
 async-channel = "2"
 crossbeam-channel = "0.5"
 reqwest = { version = "0.12", features = ["blocking", "json"] }
