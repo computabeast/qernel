@@ -2,7 +2,7 @@ use std::io::Read;
 use std::io::Write;
 
 // Optional global sender for shim events when used as a library
-pub static EVENT_SENDER: once_cell::sync::OnceCell<crossbeam_channel::Sender<codex_core::protocol::Event>> = once_cell::sync::OnceCell::new();
+pub static EVENT_SENDER: once_cell::sync::OnceCell<crossbeam_channel::Sender<qernel_codex_core::protocol::Event>> = once_cell::sync::OnceCell::new();
 
 pub fn main() -> ! {
     let exit_code = run_main();

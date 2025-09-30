@@ -99,7 +99,7 @@ pub fn run_agent_loop(
                         } else {
                             // Debug: Log the patch content for troubleshooting
                             debug_log(&debug_file, &format!("[patch] Applying patch:\n{}", patch_body), debug_file.is_some());
-                            if let Err(e) = codex_apply_patch::apply_patch(&patch_body, &mut stdout, &mut stderr) {
+                            if let Err(e) = qernel_apply_patch::apply_patch(&patch_body, &mut stdout, &mut stderr) {
                                 console.error(&format!("Failed to apply patch: {}", e))?;
                                 debug_log(&debug_file, &format!("[patch] Error details: {}", e), debug_file.is_some());
                             } else {
@@ -261,7 +261,7 @@ fn request_ai_step(api_key: &str, model: &str, goal: &str, test_cmd: &str, cwd: 
 }
 
 fn create_tools(model: &str) -> serde_json::Value {
-    use codex_core::tool_apply_patch::{
+    use qernel_codex_core::tool_apply_patch::{
         create_apply_patch_freeform_tool,  // "custom" (free-form / grammar) — GPT-5 only
         create_apply_patch_json_tool,      // "function" (JSON schema)
     };
@@ -278,10 +278,10 @@ fn create_tools(model: &str) -> serde_json::Value {
 }
 
 // Exec helper with live event printing
-fn run_cmd_with_events(argv: &[String], cwd: &Path) -> Result<codex_core::exec::ExecToolCallOutput> {
+fn run_cmd_with_events(argv: &[String], cwd: &Path) -> Result<qernel_codex_core::exec::ExecToolCallOutput> {
     use async_channel::unbounded as async_unbounded;
-    use codex_core::exec::{process_exec_tool_call, ExecParams, SandboxType, StdoutStream};
-    use codex_core::protocol::{Event, SandboxPolicy};
+    use qernel_codex_core::exec::{process_exec_tool_call, ExecParams, SandboxType, StdoutStream};
+    use qernel_codex_core::protocol::{Event, SandboxPolicy};
 
     let cmd = normalize_command(argv);
     let params = ExecParams {
@@ -324,7 +324,7 @@ fn run_cmd_with_events(argv: &[String], cwd: &Path) -> Result<codex_core::exec::
     Ok(out)
 }
 
-fn is_success(out: &codex_core::exec::ExecToolCallOutput, must_contain: Option<&str>) -> bool {
+fn is_success(out: &qernel_codex_core::exec::ExecToolCallOutput, must_contain: Option<&str>) -> bool {
     let code_ok = out.exit_code == 0;
     if !code_ok { return false; }
     match must_contain {

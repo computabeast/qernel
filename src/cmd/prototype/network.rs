@@ -30,7 +30,7 @@ pub fn make_openai_request(
     debug_log(debug_file, &format!("[ai] user prompt length: {} chars", user_prompt.len()), debug_file.is_some());
     debug_log(debug_file, &format!("[ai] total context size: {} chars", total_context_size), debug_file.is_some());
     use reqwest::blocking::Client;
-    use codex_core::tool_apply_patch::{
+    use qernel_codex_core::tool_apply_patch::{
         create_apply_patch_freeform_tool,  // "custom" (free-form / grammar) — GPT-5 only
         create_apply_patch_json_tool,      // "function" (JSON schema)
     };
@@ -291,7 +291,7 @@ where
     F: FnMut(&str, &serde_json::Value),
 {
     use reqwest::blocking::Client;
-    use codex_core::tool_apply_patch::{
+    use qernel_codex_core::tool_apply_patch::{
         create_apply_patch_freeform_tool,  // "custom" (free-form / grammar) — GPT-5 only
         create_apply_patch_json_tool,      // "function" (JSON schema)
     };

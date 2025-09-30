@@ -2,7 +2,7 @@ use std::path::Path;
 
 /// Build the system prompt for the AI agent
 pub fn build_system_prompt(_goal: &str, test_cmd: &str, cwd: &Path, project_directory_content: &str) -> String {
-    use codex_apply_patch::APPLY_PATCH_TOOL_INSTRUCTIONS;
+    use qernel_apply_patch::APPLY_PATCH_TOOL_INSTRUCTIONS;
     
     format!(
         "You are a coding agent that implements code in src/main.py to achieve the given goal.\n\n\

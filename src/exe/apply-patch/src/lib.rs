@@ -30,12 +30,12 @@ use tree_sitter::QueryCursor;
 
 pub use standalone_executable::main;
 use protocol::FileChange;
-use codex_core::protocol::Event;
-use codex_core::protocol::EventMsg;
-use codex_core::protocol::PatchApplyBeginEvent;
-use codex_core::protocol::PatchApplyEndEvent;
-use codex_core::protocol::TurnDiffEvent;
-use codex_core::protocol::FileChange as ShimFileChange;
+use qernel_codex_core::protocol::Event;
+use qernel_codex_core::protocol::EventMsg;
+use qernel_codex_core::protocol::PatchApplyBeginEvent;
+use qernel_codex_core::protocol::PatchApplyEndEvent;
+use qernel_codex_core::protocol::TurnDiffEvent;
+use qernel_codex_core::protocol::FileChange as ShimFileChange;
 use turn_diff_tracker::TurnDiffTracker;
 
 /// Detailed instructions for gpt-4.1 on how to use the `apply_patch` tool.

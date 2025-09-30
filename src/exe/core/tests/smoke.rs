@@ -1,5 +1,5 @@
-use codex_core::exec::{process_exec_tool_call, ExecParams, SandboxType, StdoutStream};
-use codex_core::protocol::SandboxPolicy;
+use qernel_codex_core::exec::{process_exec_tool_call, ExecParams, SandboxType, StdoutStream};
+use qernel_codex_core::protocol::SandboxPolicy;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -62,7 +62,7 @@ async fn smoke_exec_echo_and_curl() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn smoke_unified_exec_persists() {
-    use codex_core::unified_exec::{UnifiedExecRequest, UnifiedExecSessionManager};
+    use qernel_codex_core::unified_exec::{UnifiedExecRequest, UnifiedExecSessionManager};
 
     let manager = UnifiedExecSessionManager::default();
 

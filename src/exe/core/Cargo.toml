@@ -1,6 +1,6 @@
 [package]
 edition = "2024"
-name = "codex-core-shim"
+name = "qernel-codex-core-shim"
 version = { workspace = true }
 
 [lib]
