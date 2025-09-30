@@ -1,0 +1,43 @@
+[package]
+edition = "2024"
+name = "codex-core-shim"
+version = { workspace = true }
+
+[lib]
+doctest = false
+name = "codex_core"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+async-channel = { workspace = true }
+bytes = { workspace = true }
+libc = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+sha1 = { workspace = true }
+similar = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["io-std", "macros", "process", "rt-multi-thread", "signal", "io-util", "time", "sync"] }
+tracing = { workspace = true, features = ["log"] }
+uuid = { workspace = true, features = ["serde", "v4"] }
+which = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-bash = { workspace = true }
+shlex = { workspace = true }
+portable-pty = "0.8"
+
+
+[target.'cfg(target_os = "linux")'.dependencies]
+
+# Build OpenSSL from source for musl builds.
+
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+
+[package.metadata.cargo-shear]
+ignored = ["openssl-sys"]
