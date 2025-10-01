@@ -1,5 +1,4 @@
 use std::io::{self, Write, stdin};
-use std::io::IsTerminal;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -13,8 +12,6 @@ use syntect::{
 
 // ANSI color codes
 const RESET: &str = "\x1b[0m";
-const DIM: &str = "\x1b[2m";          // SGR 2: faint/decreased intensity (may be unsupported on some TTYs)
-const GRAY: &str = "\x1b[90m";        // bright black (reliable gray fallback)
 const GREEN: &str = "\x1b[32m";
 const RED: &str = "\x1b[31m";
 const YELLOW: &str = "\x1b[33m";
@@ -27,35 +24,22 @@ pub struct ConsoleStreamer {
     output: Arc<Mutex<io::Stdout>>,
     syntax_set: SyntaxSet,
     grayscale_theme: Theme,
-    color_enabled: bool,
-    faint_seq: &'static str,
-    reasoning_open: Arc<Mutex<bool>>,
 }
 
 impl ConsoleStreamer {
     pub fn new() -> Self {
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let grayscale_theme = Self::create_grayscale_theme();
-        // Determine whether to emit ANSI styles
-        let color_enabled = io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
-
         // On Windows, enable VT processing so ANSI escape sequences render.
         #[cfg(windows)]
-        if color_enabled {
+        if io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none() {
             let _ = Self::enable_vt_mode();
         }
-
-        // Prefer SGR 2 (dim). Some terminals ignore it; we'll still send it,
-        // but we also keep a GRAY fallback if you'd rather force a color.
-        let faint_seq = DIM;
 
         Self {
             output: Arc::new(Mutex::new(io::stdout())),
             syntax_set,
             grayscale_theme,
-            color_enabled,
-            faint_seq,
-            reasoning_open: Arc::new(Mutex::new(false)),
         }
     }
 
@@ -145,46 +129,6 @@ impl ConsoleStreamer {
         Ok(())
     }
 
-    /// Begin a live "reasoning" section. Optional, but nice for headings.
-    pub fn reasoning_begin(&self) -> Result<()> {
-        let mut open = self.reasoning_open.lock().unwrap();
-        if !*open {
-            let mut out = self.output.lock().unwrap();
-            if self.color_enabled {
-                write!(out, "{}[REASONING]{} ", self.faint_seq, RESET)?;
-            } else {
-                write!(out, "[REASONING] ")?;
-            }
-            out.flush()?;
-            *open = true;
-        }
-        Ok(())
-    }
-
-    /// Print a streamed reasoning delta in faint text.
-    pub fn reasoning_delta(&self, delta: &str) -> Result<()> {
-        let mut out = self.output.lock().unwrap();
-        if self.color_enabled {
-            // Write each chunk faint, then reset to avoid leaking style.
-            write!(out, "{}{}{}", self.faint_seq, delta, RESET)?;
-        } else {
-            write!(out, "{}", delta)?;
-        }
-        out.flush()?;
-        Ok(())
-    }
-
-    /// End the reasoning block (adds a newline and closes the section).
-    pub fn reasoning_end(&self) -> Result<()> {
-        let mut open = self.reasoning_open.lock().unwrap();
-        if *open {
-            let mut out = self.output.lock().unwrap();
-            writeln!(out)?;
-            out.flush()?;
-            *open = false;
-        }
-        Ok(())
-    }
 
     /// Print a section header with visual separators
     pub fn section(&self, title: &str) -> Result<()> {
@@ -232,35 +176,6 @@ impl ConsoleStreamer {
     }
 
 
-    /// Start an animated spinner for long-running operations
-    pub fn start_spinner(&self, message: &str) -> Arc<Mutex<bool>> {
-        let running = Arc::new(Mutex::new(true));
-        let running_clone = Arc::clone(&running);
-        let output_clone = Arc::clone(&self.output);
-        let message = message.to_string();
-        
-        thread::spawn(move || {
-            let spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-            let mut i = 0;
-            
-            while *running_clone.lock().unwrap() {
-                let mut output = output_clone.lock().unwrap();
-                write!(output, "\r{}[THINKING]{} {} {}", CYAN, RESET, message, spinner_chars[i]).unwrap();
-                output.flush().unwrap();
-                drop(output);
-                thread::sleep(Duration::from_millis(100));
-                i = (i + 1) % spinner_chars.len();
-            }
-            
-            // Clear the spinner line
-            let mut output = output_clone.lock().unwrap();
-            write!(output, "\r{}", " ".repeat(80)).unwrap();
-            write!(output, "\r").unwrap();
-            output.flush().unwrap();
-        });
-        
-        running
-    }
 
     /// Start an animated spinner with timer for long-running operations
     pub fn start_spinner_with_timer(&self, message: &str, total_timeout_secs: u64) -> Arc<Mutex<bool>> {
@@ -319,12 +234,6 @@ impl ConsoleStreamer {
         thread::sleep(Duration::from_millis(150));
     }
 
-    /// Print failure message
-    pub fn failure_completion(&self, reason: &str) -> Result<()> {
-        self.println("")?;
-        self.error(&format!("Implementation failed: {}", reason))?;
-        Ok(())
-    }
 
     /// Typewriter effect for text
     pub fn typewriter(&self, text: &str, delay_ms: u64) -> Result<()> {
@@ -353,21 +262,6 @@ impl ConsoleStreamer {
     }
 
 
-    /// Show syntax-highlighted code in a nice format
-    pub fn show_code(&self, code: &str, language: &str, title: Option<&str>) -> Result<()> {
-        if let Some(title) = title {
-            self.section(title)?;
-        }
-        
-        self.println(&format!("{}[CODE]{} {}", CYAN, RESET, language))?;
-        self.println("")?;
-        
-        // Show syntax-highlighted code
-        self.highlight_code(code, language)?;
-        
-        self.println("")?;
-        Ok(())
-    }
 
     /// Enhanced patch preview with grayscale syntax highlighting
     pub fn patch_preview(&self, patch: &str) -> Result<()> {
@@ -435,31 +329,6 @@ impl ConsoleStreamer {
         Ok(())
     }
 
-    /// Highlight code with grayscale syntax highlighting
-    pub fn highlight_code(&self, code: &str, language: &str) -> Result<()> {
-        // Detect syntax
-        let syntax = self.syntax_set.find_syntax_by_name(language)
-            .or_else(|| self.syntax_set.find_syntax_by_extension(language))
-            .unwrap_or_else(|| self.syntax_set.find_syntax_plain_text());
-        
-        // Create highlighter with grayscale theme
-        let mut highlighter = HighlightLines::new(syntax, &self.grayscale_theme);
-        
-        // Process each line with syntax highlighting
-        for line in code.lines() {
-            let ranges: Vec<(Style, &str)> = highlighter.highlight_line(line, &self.syntax_set)?;
-            let highlighted_content = as_24_bit_terminal_escaped(&ranges[..], false);
-            self.println(&highlighted_content)?;
-        }
-        
-        Ok(())
-    }
-
-    /// Highlight code block with language detection
-    pub fn highlight_code_block(&self, code: &str, file_path: &str) -> Result<()> {
-        let file_type = self.detect_file_type(file_path);
-        self.highlight_code(code, file_type)
-    }
 
     /// Highlight diff with syntax highlighting using grayscale theme
     fn highlight_diff(&self, file_lines: &[String], file_path: &str) -> Result<()> {
@@ -528,12 +397,6 @@ impl ConsoleStreamer {
 
 
 
-    /// Enhanced success completion with celebration
-    pub fn animated_success_completion(&self) -> Result<()> {
-        self.println("")?;
-        self.success("Implementation complete!")?;
-        Ok(())
-    }
 
     /// Debug-only execution result (only shown in debug mode)
     pub fn debug_execution_result(&self, command: &str, exit_code: i32, stdout: &str, stderr: &str) -> Result<()> {

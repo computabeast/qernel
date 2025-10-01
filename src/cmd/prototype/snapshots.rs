@@ -29,6 +29,9 @@ pub fn create_directory_snapshot(project_root: &Path) -> Result<String> {
         read_python_files(&src_path, &mut snapshot, project_root)?;
     }
     
+    // Add parsed images information if available
+    add_parsed_images_info(&mut snapshot, project_root)?;
+    
     Ok(snapshot)
 }
 
@@ -72,5 +75,68 @@ pub fn read_python_files(dir: &std::path::Path, contents: &mut String, project_r
             }
         }
     }
+    Ok(())
+}
+
+/// Add information about parsed images to the snapshot
+fn add_parsed_images_info(snapshot: &mut String, project_root: &Path) -> Result<()> {
+    let qernel_dir = project_root.join(".qernel");
+    let parsed_dir = qernel_dir.join("parsed");
+    
+    if !parsed_dir.exists() {
+        return Ok(());
+    }
+    
+    // Find all images directories in parsed folders
+    let mut images_found = false;
+    
+    if let Ok(entries) = std::fs::read_dir(&parsed_dir) {
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+            
+            if path.is_dir() {
+                let images_dir = path.join("images");
+                if images_dir.exists() {
+                    if !images_found {
+                        snapshot.push_str("=== Parsed Images ===\n");
+                        images_found = true;
+                    }
+                    
+                    // Get the folder name (e.g., "arxiv_9605021")
+                    let folder_name = path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown");
+                    
+                    snapshot.push_str(&format!("**Folder: {}**\n", folder_name));
+                    
+                    // List images in this folder
+                    if let Ok(image_entries) = std::fs::read_dir(&images_dir) {
+                        let mut image_count = 0;
+                        for image_entry in image_entries {
+                            let image_path = image_entry?.path();
+                            if image_path.is_file() {
+                                if let Some(extension) = image_path.extension() {
+                                    if let Some(ext_str) = extension.to_str() {
+                                        if matches!(ext_str.to_lowercase().as_str(), "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp") {
+                                            image_count += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        snapshot.push_str(&format!("  - {} images available\n", image_count));
+                        snapshot.push_str(&format!("  - Path: {}\n", images_dir.strip_prefix(project_root).unwrap_or(&images_dir).display()));
+                    }
+                    snapshot.push_str("\n");
+                }
+            }
+        }
+    }
+    
+    if images_found {
+        snapshot.push_str("**Note**: Use the `view_image` tool to examine specific images when needed.\n\n");
+    }
+    
     Ok(())
 }

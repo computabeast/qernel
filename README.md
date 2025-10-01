@@ -4,8 +4,6 @@
 
 An agentic CLI to prototype and share quantum code. 
 
-This repository is a preview for a completely open and free initiative to convert all public quantum computing research into runnable programs. 
-
 <p align="center">
 <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.9+-6828b2.svg?style=flat-square&logo=python&logoColor=white" alt="Compatible with Python versions 3.9 and higher" style="vertical-align: middle;"></a>
 <!-- <a href="https://pypi.org/project/qernel"><img src="https://img.shields.io/pypi/v/qernel.svg?logo=python&logoColor=white&label=PyPI&style=flat-square&color=9d3bb8" alt="Qernel project on PyPI" style="vertical-align: middle;"></a> -->

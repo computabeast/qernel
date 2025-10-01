@@ -22,7 +22,6 @@ use tokio::sync::broadcast;
 #[derive(Debug)]
 pub struct ExecCommandSession {
     writer_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
-    output_tx: broadcast::Sender<Vec<u8>>,
     exit_status: Arc<AtomicBool>,
 }
 impl ExecCommandSession {
@@ -39,7 +38,6 @@ impl ExecCommandSession {
         (
             Self {
                 writer_tx,
-                output_tx,
                 exit_status,
             },
             initial_output_rx,

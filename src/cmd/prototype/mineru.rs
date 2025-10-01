@@ -243,6 +243,8 @@ fn update_spec_with_paper(content_json_path: &Path, cwd: &Path) -> Result<()> {
     let paper_text = serde_json::to_string_pretty(&content_data)
         .context("Failed to serialize content JSON")?;
     
+    // Note: Images are now handled directly in the agent request, not in spec.md
+    
     // Read existing spec.md
     let spec_path = cwd.join("spec.md");
     let mut spec_content = if spec_path.exists() {
@@ -266,9 +268,13 @@ fn update_spec_with_paper(content_json_path: &Path, cwd: &Path) -> Result<()> {
          spec_content.push('\n');
          spec_content.push_str(&new_section);
     }
+    
+    // Images are now handled directly in the agent request, not added to spec.md
+    
     fs::write(&spec_path, spec_content)?;
     
     println!("Updated spec.md with paper content");
     
     Ok(())
 }
+

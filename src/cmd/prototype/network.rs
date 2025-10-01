@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use serde_json::json;
-use std::{io::{BufRead, BufReader}, path::PathBuf};
+use std::{path::PathBuf};
+use std::fs;
+use base64::{Engine as _, engine::general_purpose};
 
 use crate::cmd::prototype::logging::debug_log;
 
@@ -24,13 +26,26 @@ pub fn make_openai_request(
     _tools: serde_json::Value,
     debug_file: &Option<PathBuf>,
 ) -> Result<AiStep> {
+    make_openai_request_with_images(api_key, model, system_prompt, user_prompt, _tools, debug_file, None)
+}
+
+/// Make OpenAI API request with optional images
+pub fn make_openai_request_with_images(
+    api_key: &str,
+    model: &str,
+    system_prompt: &str,
+    user_prompt: &str,
+    _tools: serde_json::Value,
+    debug_file: &Option<PathBuf>,
+    images: Option<Vec<String>>,
+) -> Result<AiStep> {
     // Calculate total context size for warning
     let total_context_size = system_prompt.len() + user_prompt.len();
     debug_log(debug_file, &format!("[ai] system prompt length: {} chars", system_prompt.len()), debug_file.is_some());
     debug_log(debug_file, &format!("[ai] user prompt length: {} chars", user_prompt.len()), debug_file.is_some());
     debug_log(debug_file, &format!("[ai] total context size: {} chars", total_context_size), debug_file.is_some());
     use reqwest::blocking::Client;
-    use qernel_codex_core::tool_apply_patch::{
+    use codex_core::tool_apply_patch::{
         create_apply_patch_freeform_tool,  // "custom" (free-form / grammar) — GPT-5 only
         create_apply_patch_json_tool,      // "function" (JSON schema)
     };
@@ -70,6 +85,50 @@ pub fn make_openai_request(
         attempts += 1;
         debug_log(debug_file, &format!("[ai] OpenAI API attempt {}/{}", attempts, max_attempts), debug_file.is_some());
         
+        // Build the input array with optional images
+        let mut input_array = vec![
+            json!({"role": "system", "content": system_prompt}),
+        ];
+        
+        // Add user content with optional images
+        if let Some(image_paths) = &images {
+            if !image_paths.is_empty() {
+                debug_log(debug_file, &format!("[ai] attempting to encode {} images for request", image_paths.len()), debug_file.is_some());
+                
+                let mut user_content = vec![json!({"type": "input_text", "text": user_prompt})];
+                let mut successful_images = 0;
+                
+                // Add each image to the content as base64 data URLs
+                for image_path in image_paths {
+                    match encode_image_to_base64(image_path) {
+                        Ok(data_url) => {
+                            user_content.push(json!({
+                                "type": "input_image",
+                                "image_url": data_url
+                            }));
+                            successful_images += 1;
+                            debug_log(debug_file, &format!("[ai] successfully encoded image: {}", image_path), debug_file.is_some());
+                        }
+                        Err(e) => {
+                            debug_log(debug_file, &format!("[ai] failed to encode image {}: {}", image_path, e), debug_file.is_some());
+                            // Continue with other images even if one fails
+                        }
+                    }
+                }
+                
+                debug_log(debug_file, &format!("[ai] successfully encoded {} out of {} images for model request", successful_images, image_paths.len()), debug_file.is_some());
+                
+                input_array.push(json!({
+                    "role": "user",
+                    "content": user_content
+                }));
+            } else {
+                input_array.push(json!({"role": "user", "content": user_prompt}));
+            }
+        } else {
+            input_array.push(json!({"role": "user", "content": user_prompt}));
+        }
+        
         let request = client
             .post("https://api.openai.com/v1/responses")
             .bearer_auth(api_key)
@@ -78,10 +137,7 @@ pub fn make_openai_request(
                 "tools": tools,
                 "tool_choice": "auto",
                 "parallel_tool_calls": false,
-                "input": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ]
+                "input": input_array
             }));
         
         match request.send() {
@@ -276,216 +332,37 @@ fn parse_ai_response(body: &serde_json::Value, debug_file: &Option<PathBuf>) -> 
     anyhow::bail!("No actionable tool call or parseable text in response; output types = {:?}", kinds)
 }
 
-/// Stream OpenAI Responses API and return AiStep when complete.
-/// `on_event` will be called for every SSE event with (event_type, payload_json).
-pub fn make_openai_request_streaming<F>(
-    api_key: &str,
-    model: &str,
-    system_prompt: &str,
-    user_prompt: &str,
-    _tools: serde_json::Value,
-    debug_file: &Option<PathBuf>,
-    mut on_event: F,
-) -> Result<AiStep>
-where
-    F: FnMut(&str, &serde_json::Value),
-{
-    use reqwest::blocking::Client;
-    use qernel_codex_core::tool_apply_patch::{
-        create_apply_patch_freeform_tool,  // "custom" (free-form / grammar) — GPT-5 only
-        create_apply_patch_json_tool,      // "function" (JSON schema)
-    };
+/// Encode an image file to base64 data URL
+fn encode_image_to_base64(image_path: &str) -> Result<String> {
+    // Read the image file
+    let image_data = fs::read(image_path)
+        .context("Failed to read image file")?;
+    
+    // Encode to base64
+    let base64_string = general_purpose::STANDARD.encode(&image_data);
+    
+    // Determine MIME type based on file extension
+    let mime_type = get_image_mime_type(image_path);
+    
+    // Create data URL
+    Ok(format!("data:{};base64,{}", mime_type, base64_string))
+}
 
-    // Validate API key (same as your existing function)
-    if api_key.is_empty() { anyhow::bail!("OPENAI_API_KEY is empty"); }
-    if !api_key.starts_with("sk-") {
-        anyhow::bail!("OPENAI_API_KEY doesn't look like a valid OpenAI API key (should start with 'sk-')");
-    }
-    debug_log(debug_file, &format!("[ai] Using API key: {}...", &api_key[..api_key.len().min(10)]), debug_file.is_some());
-
-    // Client with no timeout — streaming can be long lived.
-    let client = Client::builder()
-        .timeout(None)
-        .build()
-        .context("Failed to create HTTP client")?;
-
-    // Tools (same logic you already have)
-    let use_custom_tools = model.starts_with("gpt-5");
-    let tools = if use_custom_tools {
-        serde_json::to_value(vec![create_apply_patch_freeform_tool()]).expect("tools json")
+/// Get MIME type based on file extension
+fn get_image_mime_type(image_path: &str) -> &'static str {
+    if let Some(extension) = std::path::Path::new(image_path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+    {
+        match extension.to_lowercase().as_str() {
+            "jpg" | "jpeg" => "image/jpeg",
+            "png" => "image/png",
+            "gif" => "image/gif",
+            "bmp" => "image/bmp",
+            "webp" => "image/webp",
+            _ => "image/jpeg", // Default fallback
+        }
     } else {
-        serde_json::to_value(vec![create_apply_patch_json_tool()]).expect("tools json")
-    };
-    debug_log(debug_file, &format!("[ai] tools json: {}",
-        serde_json::to_string_pretty(&tools).unwrap_or_default()), debug_file.is_some());
-
-    // Build streaming request. The Responses API streams via **SSE** when `stream: true`.
-    // Events include names like `response.output_text.delta`, and terminate with `response.completed`. 
-    let req = client
-        .post("https://api.openai.com/v1/responses")
-        .bearer_auth(api_key)
-        .header("Accept", "text/event-stream")
-        .json(&json!({
-            "model": model,
-            "tools": tools,
-            "tool_choice": "auto",
-            "reasoning": {"effort": "high"},
-            "parallel_tool_calls": false,
-            "stream": true,
-            "input": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-        }));
-
-    // Send request
-    let resp = req.send().context("send streaming request")?;
-    let status = resp.status();
-    debug_log(debug_file, &format!("[ai] openai status: {}", status), debug_file.is_some());
-    if !status.is_success() {
-        let error_text = resp.text().unwrap_or_default();
-        anyhow::bail!("OpenAI API error ({}): {}", status, error_text);
+        "image/jpeg" // Default fallback
     }
-
-    // ---- SSE parsing (blocking) ----
-    // Per SSE spec, frames are `event: <name>\n` + one or more `data: <json>\n` blocks, separated by a blank line. 
-    let mut reader = BufReader::new(resp);
-    let mut cur_event: Option<String> = None;
-    let mut data_buf = String::new();
-
-    // Accumulators so we can return AiStep at the end
-    let mut text_out = String::new();          // assembled content from response.output_text.delta
-    let mut tool_name: Option<String> = None;  // function/custom tool name
-    let mut tool_args = String::new();         // arguments JSON (string, accumulated in streaming deltas)
-
-    loop {
-        let mut line = String::new();
-        let n = reader.read_line(&mut line).context("read SSE line")?;
-        if n == 0 {
-            // EOF – consider it done
-            break;
-        }
-        let line = line.trim_end_matches(['\r', '\n']);
-
-        if line.is_empty() {
-            // end of one SSE event -> parse & dispatch
-            if let (Some(_evt), false) = (cur_event.as_ref(), data_buf.is_empty()) {
-                // no-op (empty data)
-            }
-            if let (Some(evt), true) = (cur_event.clone(), !data_buf.is_empty()) {
-                if data_buf == "[DONE]" {
-                    data_buf.clear();
-                    break;
-                }
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data_buf) {
-                    // hand off to caller
-                    on_event(evt.as_str(), &json);
-
-                    // internal accumulation for final AiStep
-                    match evt.as_str() {
-                        // Primary text deltas
-                        "response.output_text.delta" => {
-                            if let Some(delta) = json.get("delta").and_then(|v| v.as_str()) {
-                                text_out.push_str(delta);
-                            }
-                        }
-
-                        // Reasoning / summaries (names vary by model; we just pass-through to `on_event`)
-                        // e.g. response.reasoning_summary_text.delta / response.reasoning.delta
-                        // (See OpenAI docs + SDK notes on reasoning & streaming.) 
-
-                        // Function & tool call deltas (name/arguments might stream in pieces)
-                        "response.function_call.delta" |
-                        "response.tool_call.delta" |
-                        "response.custom_tool_call.delta" => {
-                            if let Some(n) = json.get("name").and_then(|v| v.as_str()) {
-                                if tool_name.is_none() { tool_name = Some(n.to_string()); }
-                            }
-                            if let Some(args_delta) = json
-                                .get("arguments_delta").and_then(|v| v.as_str())
-                                .or_else(|| json.get("arguments").and_then(|v| v.as_str()))
-                            {
-                                tool_args.push_str(args_delta);
-                            }
-                        }
-
-                        // When an output item finishes, some SDKs note the *full* tool args are present here.
-                        // We try to pick them up if available. 
-                        "response.output_item.done" => {
-                            if let Some(item) = json.get("item") {
-                                let item_ty = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                                if item_ty == "function_call" || item_ty == "custom_tool_call" {
-                                    if tool_name.is_none() {
-                                        if let Some(n) = item.get("name").and_then(|v| v.as_str()) {
-                                            tool_name = Some(n.to_string());
-                                        }
-                                    }
-                                    if let Some(args) = item.get("arguments").and_then(|v| v.as_str()) {
-                                        tool_args = args.to_string();
-                                    }
-                                }
-                            }
-                        }
-
-                        // Completed / error (finish)
-                        "response.completed" => { /* handled after loop */ }
-                        "response.error" => {
-                            let msg = json.get("error").and_then(|e| e.get("message")).and_then(|m| m.as_str())
-                                .unwrap_or("unknown error");
-                            anyhow::bail!("OpenAI streaming error: {}", msg);
-                        }
-
-                        _ => {}
-                    }
-                } else {
-                    debug_log(debug_file, &format!("[ai] failed to parse SSE data as JSON for event {}", evt), debug_file.is_some());
-                }
-            }
-            cur_event = None;
-            data_buf.clear();
-            continue;
-        }
-
-        if let Some(rest) = line.strip_prefix("event:") {
-            cur_event = Some(rest.trim().to_string());
-        } else if let Some(rest) = line.strip_prefix("data:") {
-            if !data_buf.is_empty() { data_buf.push('\n'); }
-            data_buf.push_str(rest.trim_start());
-        } else {
-            // Ignore all other SSE fields (id:, retry:, etc.)
-        }
-    }
-
-    // ---- Build final AiStep from accumulators ----
-
-    // 1) If we saw a tool call, convert to AiStep directly.
-    if let Some(name) = tool_name.as_deref() {
-        // arguments arrive as a JSON string; parse best-effort
-        let args_json: serde_json::Value = serde_json::from_str(&tool_args).unwrap_or_else(|_| json!({}));
-        match name {
-            "apply_patch" => {
-                if let Some(input) = args_json.get("input").and_then(|v| v.as_str()) {
-                    return Ok(AiStep { action: "apply_patch".into(), rationale: None, patch: Some(input.to_string()), command: None });
-                }
-            }
-            "shell" => {
-                let cmd = args_json.get("command").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                return Ok(AiStep { action: "shell".into(), rationale: None, patch: None, command: Some(cmd) });
-            }
-            _ => {
-                // Unknown tool -> fall through to text parsing
-                debug_log(debug_file, &format!("[ai] unrecognized tool call: {} args: {}", name, tool_args), debug_file.is_some());
-            }
-        }
-    }
-
-    // 2) Otherwise, try to parse the assembled text as your JSON action schema (same as your fallback).
-    if !text_out.trim().is_empty() {
-        if let Ok(step) = serde_json::from_str::<AiStep>(&text_out) {
-            return Ok(step);
-        }
-        debug_log(debug_file, &format!("[ai] text_out not parseable as AiStep; first 200 chars:\n{}", &text_out[..text_out.len().min(200)]), debug_file.is_some());
-    }
-
-    anyhow::bail!("No actionable tool call or parseable text from stream")
 }
