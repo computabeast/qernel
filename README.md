@@ -2,7 +2,7 @@
 <img alt="Qernel logo" width="96px" src="https://www.dojoquantum.com/_next/image?url=%2Fquantum-computing.png&w=96&q=75">
 <br>
 
-An agentic CLI to prototype and share quantum code. Now every
+An agentic CLI to prototype and share quantum code.
 
 <p align="center">
 <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.9+-6828b2.svg?style=flat-square&logo=python&logoColor=white" alt="Compatible with Python versions 3.9 and higher" style="vertical-align: middle;"></a>
