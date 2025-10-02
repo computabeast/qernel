@@ -83,7 +83,7 @@ qernel prototype
 The `qernel` CLI also makes it easy to upload projects to the [Qernel Zoo](https://qernelzoo.com), a hub to collaborate and share quantum computing experiments. You can login to the Zoo with:
 
 ```bash
-qernel login
+qernel auth
 ```
 
 And then enter in your PAT from the Zoo website. You can then push and pull projects in the same way you would use Git/Github.

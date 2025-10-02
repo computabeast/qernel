@@ -22,7 +22,7 @@ pub fn handle_push(remote: String, url: Option<String>, branch: Option<String>, 
                 url.clone()
             }
         } else {
-            println!("{} Warning: No stored token found. You may need to run 'qernel login' first.", crate::util::sym_question(ce));
+            println!("{} Warning: No stored token found. You may need to run 'qernel auth' first.", crate::util::sym_question(ce));
             url.clone()
         };
         
@@ -180,7 +180,7 @@ pub fn handle_push(remote: String, url: Option<String>, branch: Option<String>, 
             let error_msg = e.to_string();
             if error_msg.contains("could not read Username") || error_msg.contains("Authentication failed") {
                 println!("{} Push failed: Authentication required", crate::util::sym_cross(ce));
-                println!("💡 Try running 'qernel login' to store your token, then try again.");
+                println!("💡 Try running 'qernel auth' to store your token, then try again.");
             } else {
                 println!("{} Push failed to {} {}: {}", crate::util::sym_cross(ce), remote, current_branch, e);
             }

@@ -22,8 +22,8 @@ enum Commands {
         #[arg(long)]
         template: bool,
     },
-    /// Login by saving personal access token
-    Login,
+    /// Authenticate with the Zoo by saving and inspecting your personal access token
+    Auth,
     /// Push current repo to remote server
     Push {
         /// Optional remote name (default: origin)
@@ -73,7 +73,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::New { path, template } => cmd::new::handle_new(path, template),
-        Commands::Login => cmd::login::handle_login(),
+        Commands::Auth => cmd::login::handle_auth(),
         Commands::Push { remote, url, branch, no_commit } => cmd::push::handle_push(remote, url, branch, no_commit),
         Commands::Pull { repo, dest, branch, server } => cmd::pull::handle_pull(repo, dest, branch, server),
         Commands::Prototype { cwd, model, max_iters, debug } => cmd::prototype::handle_prototype(cwd, model, max_iters, debug),
