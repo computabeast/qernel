@@ -2,7 +2,7 @@
 <img alt="Qernel logo" width="96px" src="https://www.dojoquantum.com/_next/image?url=%2Fquantum-computing.png&w=96&q=75">
 <br>
 
-An agentic CLI to prototype and share quantum code. 
+An agentic CLI to prototype and share quantum code. Now every
 
 <p align="center">
 <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.9+-6828b2.svg?style=flat-square&logo=python&logoColor=white" alt="Compatible with Python versions 3.9 and higher" style="vertical-align: middle;"></a>
@@ -38,22 +38,22 @@ qernel new my-project --template
 
 This will create a Git repository named `my-project` with the following structure:
 
-```
+```bash
 my-project/
 ├── README.md               
 ├── .gitignore                  
-├── spec.md                    # Empty project spec to feed into the agent
-├── benchmark.md               # Empty benchmarking spec to feed into the agent
-├── qernel.yaml                # Qernel agent configuration file 
-├── requirements.txt           # Python dependencies
-├── src/                       # Source code directory (where you work from)
+├── spec.md                    # Tells the agent what to do here
+├── benchmark.md
+├── qernel.yaml
+├── requirements.txt 
+├── src/                       # Your code goes here
 │   ├── __init__.py
-│   ├── main.py                # Main implementation file
-│   └── tests.py               # Test file with basic pytest setup
-├── .qernel/                   # Qernel-specific directory (git-ignored)
-│   ├── README.md              # Documentation for .qernel directory
-│   └── .venv/                 # Python virtual environment (created automatically)
-└── .git/                      # Git repository (initialized automatically)
+│   ├── main.py
+│   └── tests.py
+├── .qernel/                   # Directory for any intermediate steps/generated config
+│   ├── README.md
+│   └── .venv/
+└── .git/
 ```
 
 You can then prototype out quantum circuits from your own work by pasting instructions in `spec.md`, or automatically download and prototype a paper from [the arXiv](https://arxiv.org). A more comprehensive guide to using the prototype feature can be found in [src/README.md](./src/README.md).
