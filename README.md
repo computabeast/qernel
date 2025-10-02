@@ -42,7 +42,7 @@ This will create a Git repository named `my-project` with the following structur
 my-project/
 ├── README.md               
 ├── .gitignore                  
-├── spec.md                    # Tells the agent what to do here
+├── spec.md                    # Tell the agent what to do here
 ├── benchmark.md
 ├── qernel.yaml
 ├── requirements.txt 
