@@ -245,8 +245,8 @@ fn update_spec_with_paper(content_json_path: &Path, cwd: &Path) -> Result<()> {
     
     // Note: Images are now handled directly in the agent request, not in spec.md
     
-    // Read existing spec.md
-    let spec_path = cwd.join("spec.md");
+    // Read existing .qernel/spec.md
+    let spec_path = cwd.join(".qernel").join("spec.md");
     let mut spec_content = if spec_path.exists() {
         fs::read_to_string(&spec_path)?
     } else {
@@ -273,7 +273,7 @@ fn update_spec_with_paper(content_json_path: &Path, cwd: &Path) -> Result<()> {
     
     fs::write(&spec_path, spec_content)?;
     
-    println!("Updated spec.md with paper content");
+    println!("Updated .qernel/spec.md with paper content");
     
     Ok(())
 }

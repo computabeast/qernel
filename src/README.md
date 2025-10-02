@@ -11,23 +11,23 @@ This will create a Git repository named `my-project` with the following structur
 
 ```
 my-project/
-├── README.md               
-├── .gitignore                  
-├── spec.md                    # Empty project spec to feed into the agent
-├── benchmark.md               # Empty benchmarking spec to feed into the agent
-├── qernel.yaml                # Qernel agent configuration file 
-├── requirements.txt           # Python dependencies
+├── README.md
+├── .gitignore
 ├── src/                       # Source code directory (where you work from)
 │   ├── __init__.py
 │   ├── main.py                # Main implementation file
 │   └── tests.py               # Test file with basic pytest setup
-├── .qernel/                   # Qernel-specific directory (git-ignored)
-│   ├── README.md              # Documentation for .qernel directory
+├── .qernel/                   # Qernel-specific working directory (git-ignored)
+│   ├── README.md
+│   ├── spec.md                # Project spec to feed into the agent
+│   ├── benchmark.md           # Benchmarking spec to feed into the agent
+│   ├── qernel.yaml            # Qernel agent configuration file 
+│   ├── requirements.txt       # Python dependencies
 │   └── .venv/                 # Python virtual environment (created automatically)
 └── .git/                      # Git repository (initialized automatically)
 ```
 
-You can then prototype out quantum circuits from your own work by pasting instructions in `spec.md`, or automatically download and prototype a paper from [the arXiv](https://arxiv.org). A more comprehensive guide to using the prototype feature can be found in [src/README.md](./src/README.md).
+You can then prototype by pasting instructions in `.qernel/spec.md`, or automatically download and prototype a paper from [the arXiv](https://arxiv.org). A more comprehensive guide to using the prototype feature can be found in [src/README.md](./src/README.md).
 
 ```
 qernel prototype

@@ -10,28 +10,26 @@ use crate::config::{QernelConfig, save_config};
 pub fn handle_new(path: String, template: bool) -> Result<()> {
     let project_path = Path::new(&path);
     if project_path.exists() {
-        anyhow::bail!("path already exists: {}", project_path.display());
+        anyhow::bail!("Path already exists: {}", project_path.display());
     }
 
     let pb = ProgressBar::new_spinner();
-    pb.set_style(ProgressStyle::with_template("{spinner} scaffolding project...").unwrap());
+    pb.set_style(ProgressStyle::with_template("{spinner} Scaffolding project...").unwrap());
     pb.enable_steady_tick(std::time::Duration::from_millis(80));
 
     fs::create_dir_all(&project_path).with_context(|| "failed to create project dir")?;
 
-    // Create basic structure
+
     let src_dir = project_path.join("src");
     fs::create_dir_all(&src_dir)?;
-
-    // Write a README and .gitignore
     fs::write(project_path.join("README.md"), "# New Qernel Project\n")?;
     fs::write(project_path.join(".gitignore"), ".DS_Store\n/target\n.env\n.qernel/\n__pycache__/\n*.py[cod]\n*$py.class\n.logs/\n*.log\n")?;
 
     // Optional template placeholders
     if template {
-        create_prototype_template(&project_path)?;
-    } else {
-        fs::write(src_dir.join("main.qk"), "// entrypoint for quantum kernel\n")?;
+        // Suspend spinner while running long-running steps (venv + pip) to avoid flicker
+        let res: Result<()> = pb.suspend(|| create_prototype_template(&project_path));
+        res?;
     }
 
     // Initialize git repository
@@ -50,7 +48,7 @@ fn create_prototype_template(project_path: &Path) -> Result<()> {
     // Create src directory
     let src_dir = project_path.join("src");
     fs::create_dir_all(&src_dir)?;
-    
+
     // Create .qernel directory with README
     let qernel_dir = project_path.join(".qernel");
     fs::create_dir_all(&qernel_dir)?;
@@ -90,7 +88,7 @@ This entire directory is ignored by git, so you can store personal files, API ke
 "#;
     fs::write(qernel_dir.join("README.md"), qernel_readme)?;
     
-    // Create spec.md
+    // Create .qernel/spec.md
     let spec_content = r#"# Project Specification
 
 ## Objective
@@ -111,9 +109,9 @@ Implement the algorithms and concepts described in the research paper.
 - Code is well-documented with examples
 - Performance meets specified requirements
 "#;
-    fs::write(project_path.join("spec.md"), spec_content)?;
+    fs::write(qernel_dir.join("spec.md"), spec_content)?;
     
-    // Create benchmark.md
+    // Create .qernel/benchmark.md
     let benchmark_content = r#"# Benchmarking Criteria
 
 ## Functional Tests
@@ -133,9 +131,9 @@ Implement the algorithms and concepts described in the research paper.
 - [ ] Examples are clear and runnable
 - [ ] API documentation is complete
 "#;
-    fs::write(project_path.join("benchmark.md"), benchmark_content)?;
+    fs::write(qernel_dir.join("benchmark.md"), benchmark_content)?;
     
-    // Create qernel.yaml
+    // Create .qernel/qernel.yaml
     let config = QernelConfig {
         project: crate::config::ProjectConfig {
             name: project_path.file_name()
@@ -155,10 +153,10 @@ Implement the algorithms and concepts described in the research paper.
         },
     };
     
-    save_config(&config, &project_path.join("qernel.yaml"))?;
+    save_config(&config, &qernel_dir.join("qernel.yaml"))?;
     
-    // Create requirements.txt
-    fs::write(project_path.join("requirements.txt"), "pytest\nnumpy\nmineru[core]\n")?;
+    // Create .qernel/requirements.txt
+    fs::write(qernel_dir.join("requirements.txt"), "pytest\nnumpy\nmineru[core]\n")?;
     
     // Create basic Python files
     fs::write(src_dir.join("__init__.py"), "")?;
@@ -175,31 +173,33 @@ Implement the algorithms and concepts described in the research paper.
 }
 
 fn create_python_venv(project_path: &Path) -> Result<PathBuf> {
-    let venv_dir = project_path.join(".qernel").join(".venv");
+    // Always use an absolute project path to avoid nested <proj>/<proj>/.qernel/.venv
+    let project_abs = project_path
+        .canonicalize()
+        .unwrap_or_else(|_| project_path.to_path_buf());
+
+    let venv_dir = project_abs.join(".qernel").join(".venv");
     fs::create_dir_all(venv_dir.parent().unwrap())
         .with_context(|| format!("failed to create {}", venv_dir.parent().unwrap().display()))?;
 
-    // Resolve to an absolute path string for the venv target
-    let venv_abs = venv_dir
-        .canonicalize()
-        .unwrap_or_else(|_| venv_dir.clone());
-    let venv_arg = venv_abs.to_string_lossy().to_string();
+    // Use absolute target for venv creation
+    let venv_arg = venv_dir.to_string_lossy().to_string();
 
-    println!("🔧 creating project venv at: {}", venv_abs.display());
+    let ce = crate::util::color_enabled_stdout();
+    println!("{} Creating project venv at: {}", crate::util::sym_check(ce), venv_dir.display());
 
     // Try python3, then python, then Windows py -3
-     let candidates: [(&str, &[&str]); 3] = [
-             ("python3", &[]),
-             ("python",  &[]),
-             ("py",      &["-3"]),
-         ];
+    let candidates: [(&str, &[&str]); 3] = [
+        ("python3", &[]),
+        ("python", &[]),
+        ("py", &["-3"]),
+    ];
 
     let mut created = false;
     for &(prog, pre) in candidates.iter() {
-            let status = Command::new(prog)
-                .args(pre)
+        let status = Command::new(prog)
+            .args(pre)
             .args(["-m", "venv", &venv_arg])
-            .current_dir(project_path) // make resolution unambiguous
             .status();
 
         if matches!(status, Ok(s) if s.success()) {
@@ -208,19 +208,19 @@ fn create_python_venv(project_path: &Path) -> Result<PathBuf> {
         }
     }
     if !created {
-        anyhow::bail!("failed to create virtual environment in {}", venv_abs.display());
+        anyhow::bail!("Failed to create virtual environment in {}", venv_dir.display());
     }
 
     // Install deps (best-effort)
-    let vpy = venv_python(&venv_abs);
+    let vpy = venv_python(&venv_dir);
     let _ = Command::new(&vpy)
-        .args(["-m", "pip", "install", "-U", "pip", "setuptools", "wheel"])
+        .args(["-m", "pip", "install", "-U", "pip", "setuptools", "wheel"]) 
         .status();
 
-    let req = project_path.join("requirements.txt");
+    let req = project_abs.join(".qernel").join("requirements.txt");
     if req.exists() {
         let _ = Command::new(&vpy)
-            .args(["-m", "pip", "install", "-r"])
+            .args(["-m", "pip", "install", "-r"]) 
             .arg(&req)
             .status();
     }

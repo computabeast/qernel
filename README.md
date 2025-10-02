@@ -16,6 +16,8 @@ Looking for the Qernel Zoo? [Go to qernelzoo.com.](https://www.qernelzoo.com)
 
 ### Installation
 
+**Qernel is currently in a development preview and is subject to change. To be notified of all major changes, sign up for the Zoo.**
+
 Since this project is under active development, the best way to install `qernel` is to build from source, which requires [Rust](https://rust-lang.org/tools/install/) and [Python](https://www.python.org/downloads/).
 ```bash
 git clone https://github.com/computabeast/qernel.git
@@ -40,23 +42,23 @@ This will create a Git repository named `my-project` with the following structur
 
 ```bash
 my-project/
-├── README.md               
-├── .gitignore                  
-├── spec.md                    # Tell the agent what to do here
-├── benchmark.md
-├── qernel.yaml
-├── requirements.txt 
-├── src/                       # Your code goes here
+├── README.md
+├── .gitignore
+├── src/                       # Your code here
 │   ├── __init__.py
-│   ├── main.py
-│   └── tests.py
-├── .qernel/                   # Directory for any intermediate steps/generated config
+│   ├── main.py                
+│   └── tests.py               
+├── .qernel/                   # Environment were agentic work happens
 │   ├── README.md
+│   ├── spec.md
+│   ├── benchmark.md
+│   ├── qernel.yaml            # Qernel agent configuration file
+│   ├── requirements.txt
 │   └── .venv/
 └── .git/
 ```
 
-You can then prototype out quantum circuits from your own work by pasting instructions in `spec.md`, or automatically download and prototype a paper from [the arXiv](https://arxiv.org). A more comprehensive guide to using the prototype feature can be found in [src/README.md](./src/README.md).
+You can then prototype by pasting instructions in `.qernel/spec.md`, or automatically download and prototype a paper from [the arXiv](https://arxiv.org). A more comprehensive guide to using the prototype feature can be found in [src/README.md](./src/README.md).
 
 ```
 qernel prototype

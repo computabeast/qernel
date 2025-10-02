@@ -19,8 +19,8 @@ pub fn handle_prototype(cwd: String, model: String, max_iters: u32, debug: bool)
     let cwd_path = Path::new(&cwd);
     let cwd_abs = cwd_path.canonicalize().unwrap_or_else(|_| cwd_path.to_path_buf());
     
-    // Load configuration
-    let config_path = cwd_abs.join("qernel.yaml");
+    // Load configuration from .qernel
+    let config_path = cwd_abs.join(".qernel").join("qernel.yaml");
     let mut config = load_config(&config_path)?;
     
     // Override config with command line arguments if provided
@@ -46,7 +46,7 @@ pub fn handle_prototype(cwd: String, model: String, max_iters: u32, debug: bool)
         mineru::process_content_files(content_files, &cwd_abs)?;
     }
     
-    // Read spec.md for implementation goals
+    // Read .qernel/spec.md for implementation goals
     let goal = read_spec_goal(&cwd_abs)?;
     
     // Read benchmark command from config
@@ -65,13 +65,13 @@ pub fn handle_prototype(cwd: String, model: String, max_iters: u32, debug: bool)
 }
 
 fn read_spec_goal(cwd: &Path) -> Result<String> {
-    let spec_path = cwd.join("spec.md");
+    let spec_path = cwd.join(".qernel").join("spec.md");
     if !spec_path.exists() {
-        anyhow::bail!("spec.md not found. Please create a project with 'qernel new --template' first.");
+        anyhow::bail!(".qernel/spec.md not found. Please create a project with 'qernel new --template' first.");
     }
-    
+
     let spec_content = std::fs::read_to_string(&spec_path)
-        .context("Failed to read spec.md")?;
-    
+        .context("Failed to read .qernel/spec.md")?;
+
     Ok(spec_content)
 }
