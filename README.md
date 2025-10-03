@@ -72,42 +72,19 @@ qernel prototype --arxiv https://arxiv.org/abs/quant-ph/9605005
 
 ### Explaining code from existing projects
 
-Quantum code can be specifically difficult to read through, mainly do the fact that lots of advanced math is abstracted away in helper functions. While this helps for readability, it makes experimenting and understanding different packages a pain. 
-
-By running
+Quantum code can be specifically difficult to read through, mainly do the fact that lots of advanced math is abstracted away in helper functions. While this helps for readability, it makes experimenting and understanding different packages a pain. If you run:
 
 ```bash
 qernel explain path/to/file.py
 ```
 
-Qernel can analyze a file piece by piece and output a text explanation for each section, eg:
+Qernel can analyze a file piece by piece and output a text explanation for each section, e.g.:
 
-```python
-[615 -> 634]  function _append_boundary_detectors_generic  (id=main.py::function:31) 
-
-Defines a helper that adds boundary detectors for the final round’s Z‑type stabilizers: for each stabilizer composed only of I and Z, it creates a detector linking the stabilizer’s last-round measurement to each data qubit measurement where the stabilizer has a Z. It emits a TICK after any detectors are appended.
-
-   615 | def _append_boundary_detectors_generic(
-   616 |     circuit: stim.Circuit,
-   617 |     last_round: Sequence[int],
-   618 |     stabilizers: Sequence[str],
-   619 |     data_measurements: Dict[int, int],
-   620 | ) -> None:
-   621 |     """Attach boundary detectors for Z-type stabilizers."""
-   622 |     emitted = False
-   623 |     for stab_index, stabilizer in enumerate(stabilizers):
-   624 |         if not _is_z_type(stabilizer):
-   625 |             continue
-   626 |         targets = [_rec_target(circuit, last_round[stab_index])]
-   627 |         for data_index, pauli in enumerate(stabilizer):
-   628 |             if pauli == "Z":
-   629 |                 targets.append(_rec_target(circuit, data_measurements[data_index]))
-   630 |         if len(targets) > 1:
-   631 |             circuit.append("DETECTOR", targets)
-   632 |             emitted = True
-   633 |     if emitted:
-   634 |         circuit.append("TICK")
-```
+<p align="center">
+  <img src=".github/qernelexplain.png" alt="Qernel explain output preview" width="900" />
+  <br>
+  <em>Explaining code from an existing project</em>
+</p>
 
 You can also output results of the file to Markdown by adding the `--markdown` flag:
 
