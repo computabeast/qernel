@@ -1,0 +1,107 @@
+name: nightly
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            plat_os: darwin
+            plat_arch: arm64
+            use_cross: false
+
+          - os: macos-13
+            target: x86_64-apple-darwin
+            plat_os: darwin
+            plat_arch: x64
+            use_cross: false
+
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            plat_os: linux
+            plat_arch: x64
+            use_cross: false
+
+          - os: ubuntu-22.04
+            target: aarch64-unknown-linux-gnu
+            plat_os: linux
+            plat_arch: arm64
+            use_cross: true
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ matrix.use_cross }}" == "true" ]]; then
+            cargo install cross --git https://github.com/cross-rs/cross
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p pkg
+          BIN="target/${{ matrix.target }}/release/qernel"
+          if [[ "${{ matrix.plat_os }}" == "darwin" ]]; then strip -x "$BIN" || true; else strip "$BIN" || true; fi
+          chmod +x "$BIN"
+          cp "$BIN" pkg/qernel
+          tar -C pkg -czf "qernel-${{ matrix.plat_os }}-${{ matrix.plat_arch }}.tar.gz" qernel
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qernel-${{ matrix.plat_os }}-${{ matrix.plat_arch }}
+          path: qernel-${{ matrix.plat_os }}-${{ matrix.plat_arch }}.tar.gz
+
+  publish:
+    runs-on: ubuntu-22.04
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Flatten + checksums
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd dist
+          find . -name 'qernel-*.tar.gz' -maxdepth 2 -exec mv {} . \;
+          rm -rf qernel-*
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum qernel-*.tar.gz > SHA256SUMS
+          else
+            shasum -a 256 qernel-*.tar.gz > SHA256SUMS
+          fi
+
+      - name: Create/refresh 'nightly' prerelease and overwrite assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if gh release view nightly >/dev/null 2>&1; then
+            gh release edit nightly --prerelease || true
+          else
+            gh release create nightly --prerelease -t "Nightly" -n "Built from main"
+          fi
+          gh release upload nightly dist/qernel-*.tar.gz dist/SHA256SUMS --clobber
