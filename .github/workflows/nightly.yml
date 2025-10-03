@@ -48,8 +48,9 @@ jobs:
         run: |
           set -euxo pipefail
           if [[ "${{ matrix.use_cross }}" == "true" ]]; then
-            cargo install cross --git https://github.com/cross-rs/cross
-            cross build --release --target ${{ matrix.target }} --image ghcr.io/cross-rs/aarch64-unknown-linux-gnu:ubuntu-22.04
+            cargo install cross --git https://github.com/cross-rs/cross --locked
+            cross --image ghcr.io/cross-rs/aarch64-unknown-linux-gnu:main \
+              build --release --target ${{ matrix.target }}
           else
             cargo build --release --target ${{ matrix.target }}
           fi
