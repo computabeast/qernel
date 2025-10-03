@@ -23,18 +23,21 @@ pub fn handle_new(path: String, template: bool) -> Result<()> {
     let src_dir = project_path.join("src");
     fs::create_dir_all(&src_dir)?;
     fs::write(project_path.join("README.md"), "# New Qernel Project\n")?;
-    fs::write(project_path.join(".gitignore"), \
-        ".DS_Store\n\
-        /target\n\
-        .env\n\
-        .qernel/.venv/\n\
-        .qernel/parsed/\n\
-        .qernel/papers/\n\
-        __pycache__/\n\
-        *.py[cod]\n\
-        *$py.class\n\
-        .logs/\n\
-        *.log\n"
+    fs::write(
+        project_path.join(".gitignore"),
+        concat!(
+            ".DS_Store\n",
+            "/target\n",
+            ".env\n",
+            ".qernel/.venv/\n",
+            ".qernel/parsed/\n",
+            ".qernel/papers/\n",
+            "__pycache__/\n",
+            "*.py[cod]\n",
+            "*$py.class\n",
+            ".logs/\n",
+            "*.log\n",
+        ),
     )?;
 
     // Optional template placeholders
