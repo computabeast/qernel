@@ -106,16 +106,17 @@ fn process_remote_paper(url: &str, cwd: &Path) -> Result<()> {
 fn download_paper(url: &str, papers_dir: &Path) -> Result<PathBuf> {
     use reqwest::blocking::Client;
     
-    // Create a filename from the URL
-    let filename = if url.contains("arxiv.org") {
-        // Extract arxiv ID for filename
-        if let Some(id) = url.split('/').last() {
+    // Normalize arXiv URLs to direct PDF endpoints
+    let effective_url = normalize_arxiv_pdf_url(url);
+
+    // Create a filename from the (possibly normalized) URL
+    let filename = if effective_url.contains("arxiv.org") {
+        if let Some(id) = effective_url.split('/').last() {
             format!("arxiv_{}.pdf", id.replace(".pdf", ""))
         } else {
             "downloaded_paper.pdf".to_string()
         }
     } else {
-        // Generic filename for other URLs
         "downloaded_paper.pdf".to_string()
     };
     
@@ -123,17 +124,33 @@ fn download_paper(url: &str, papers_dir: &Path) -> Result<PathBuf> {
     
     // Download the PDF
     let client = Client::new();
-    let response = client.get(url).send()
+    let response = client.get(&effective_url).send()
         .context("Failed to download paper")?;
     
     if !response.status().is_success() {
         anyhow::bail!("Failed to download paper: HTTP {}", response.status());
     }
-    
+
+    // Validate that the response is a PDF
+    let content_type = response.headers().get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let bytes = response.bytes().context("Failed to read response body")?;
+    let is_pdf_magic = bytes.len() >= 5 && &bytes[..5] == b"%PDF-";
+    let is_pdf_header = content_type.starts_with("application/pdf");
+    if !(is_pdf_magic || is_pdf_header) {
+        anyhow::bail!(
+            "Downloaded content is not a PDF. URL tried: {} (Content-Type: {}). If you passed an arXiv 'abs' link, use the PDF URL or let the CLI normalize it.",
+            effective_url,
+            content_type
+        );
+    }
+
     let mut file = std::fs::File::create(&pdf_path)
         .context("Failed to create PDF file")?;
-    
-    let mut content = std::io::Cursor::new(response.bytes()?);
+    let mut content = std::io::Cursor::new(bytes);
     std::io::copy(&mut content, &mut file)
         .context("Failed to write PDF content")?;
     
@@ -195,15 +212,15 @@ fn process_local_pdf(pdf_path: &Path, cwd: &Path) -> Result<()> {
 }
 
 fn find_content_json(parsed_dir: &Path) -> Result<PathBuf> {
-    // Look for content_list.json files recursively
+    // Look strictly for content_list.json files recursively
     let mut content_files = Vec::new();
-    
+
     fn find_json_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
         if dir.is_dir() {
             for entry in fs::read_dir(dir)? {
                 let entry = entry?;
                 let path = entry.path();
-                
+
                 if path.is_dir() {
                     find_json_files(&path, files)?;
                 } else if path.file_name()
@@ -216,19 +233,42 @@ fn find_content_json(parsed_dir: &Path) -> Result<PathBuf> {
         }
         Ok(())
     }
-    
+
     find_json_files(parsed_dir, &mut content_files)?;
-    
+
     if content_files.is_empty() {
         anyhow::bail!("No content_list.json found in parsed directory");
     }
-    
+
     // Use the most recent one
     use std::time::SystemTime;
     content_files.sort_by_key(|p| {
         fs::metadata(p).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH)
     });
     Ok(content_files.last().cloned().unwrap())
+}
+
+fn normalize_arxiv_pdf_url(url: &str) -> String {
+    // Convert /abs/<id> -> /pdf/<id>.pdf and ensure .pdf suffix on /pdf
+    if let Ok(parsed) = url::Url::parse(url) {
+        if parsed.domain().map(|d| d.contains("arxiv.org")).unwrap_or(false) {
+            let mut p = parsed.clone();
+            let path = p.path();
+            if let Some(pos) = path.find("/abs/") {
+                let id = &path[pos + 5..];
+                p.set_path(&format!("/pdf/{}.pdf", id.trim_end_matches('.')));
+                return p.to_string();
+            }
+            if path.starts_with("/pdf/") && !path.ends_with(".pdf") {
+                let mut newp = path.to_string();
+                newp.push_str(".pdf");
+                p.set_path(&newp);
+                return p.to_string();
+            }
+            return p.to_string();
+        }
+    }
+    url.to_string()
 }
 
 fn update_spec_with_paper(content_json_path: &Path, cwd: &Path) -> Result<()> {

@@ -13,6 +13,7 @@ use std::path::Path;
 
 use crate::config::load_config;
 use crate::cmd::prototype::logging::{debug_log, init_debug_logging};
+use crate::config::save_config;
 
 /// Main prototype handler - orchestrates the entire prototype workflow
 pub fn handle_prototype(cwd: String, model: String, max_iters: u32, debug: bool) -> Result<()> {
@@ -62,6 +63,48 @@ pub fn handle_prototype(cwd: String, model: String, max_iters: u32, debug: bool)
         config.agent.max_iterations,
         debug,
     )
+}
+
+/// Quickstart: scaffold a project for an arXiv URL then run prototype
+pub fn quickstart_arxiv(url: String, model: String, max_iters: u32, debug: bool) -> Result<()> {
+    // 1) Derive folder name from arXiv id
+    let id = parse_arxiv_id(&url).unwrap_or_else(|| "paper".to_string());
+    let folder = format!("arxiv-{}", id);
+
+    // 2) Scaffold new project with template
+    crate::cmd::new::handle_new(folder.clone(), true)?;
+
+    // 3) Update .qernel/qernel.yaml with the arXiv URL
+    let proj_path = std::path::Path::new(&folder);
+    let config_path = proj_path.join(".qernel").join("qernel.yaml");
+    let mut cfg = load_config(&config_path)?;
+    cfg.papers = vec![crate::config::PaperConfig { url: url.clone() }];
+    save_config(&cfg, &config_path)?;
+
+    // 4) Run prototype in that folder
+    handle_prototype(folder, model, max_iters, debug)
+}
+
+fn parse_arxiv_id(url: &str) -> Option<String> {
+    // Handles /abs/<id>[vN], /pdf/<id>[vN].pdf, or raw ids
+    let url = url.trim();
+    if let Some(idx) = url.find("arxiv.org/") {
+        let rest = &url[idx..];
+        let parts: Vec<&str> = rest.split('/').collect();
+        if let Some(pos) = parts.iter().position(|p| *p == "abs" || *p == "pdf") {
+            if let Some(idpart) = parts.get(pos + 1) {
+                let mut id = idpart.to_string();
+                if let Some(dotpdf) = id.find(".pdf") { id.truncate(dotpdf); }
+                return Some(id);
+            }
+        }
+    }
+    // Fallback: if looks like an id
+    let clean = url.trim_end_matches(".pdf");
+    if clean.chars().all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '.' || c == 'v') {
+        return Some(clean.to_string());
+    }
+    None
 }
 
 fn read_spec_goal(cwd: &Path) -> Result<String> {

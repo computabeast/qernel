@@ -66,6 +66,9 @@ enum Commands {
         /// Enable debug logging to .logs file
         #[arg(long)]
         debug: bool,
+        /// One-shot prototype an arXiv paper URL (creates new project arxiv-<id>)
+        #[arg(long)]
+        arxiv: Option<String>,
     },
 }
 
@@ -76,6 +79,8 @@ fn main() -> Result<()> {
         Commands::Auth => cmd::login::handle_auth(),
         Commands::Push { remote, url, branch, no_commit } => cmd::push::handle_push(remote, url, branch, no_commit),
         Commands::Pull { repo, dest, branch, server } => cmd::pull::handle_pull(repo, dest, branch, server),
-        Commands::Prototype { cwd, model, max_iters, debug } => cmd::prototype::handle_prototype(cwd, model, max_iters, debug),
+        Commands::Prototype { cwd, model, max_iters, debug, arxiv } => {
+            if let Some(url) = arxiv { cmd::prototype::quickstart_arxiv(url, model, max_iters, debug) } else { cmd::prototype::handle_prototype(cwd, model, max_iters, debug) }
+        }
     }
 }

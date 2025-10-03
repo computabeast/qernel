@@ -64,6 +64,13 @@ You can then prototype by pasting instructions in `.qernel/spec.md`, or automati
 qernel prototype
 ```
 
+Or, one-shot prototype an arXiv paper into a fresh project:
+
+```bash
+qernel prototype --arxiv https://arxiv.org/abs/quant-ph/9605005
+# Creates ./arxiv-quant-ph/9605005 and runs the full prototype flow
+```
+
 #### Limitations
 
 - This project currently relies on AI models that are not optimized for quantum computing concepts/programming, and therefore may not always produce accurate results. **We are actively working to solve this issue.** However, we've seen strong potential in AI models to mathetmatically reason (see [here](https://deepmind.google/discover/blog/advanced-version-of-gemini-with-deep-think-officially-achieves-gold-medal-standard-at-the-international-mathematical-olympiad/), [here](https://x.com/alexwei_/status/1946477742855532918)), and expect this accuracy gap to decrease over time.
