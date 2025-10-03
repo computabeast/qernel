@@ -1,3 +1,8 @@
+
+<p align="center">
+<code>curl -fsSL http://qernelzoo.com/install.sh | bash</code>
+</div>
+
 <div align="center">
 <img alt="Qernel logo" width="96px" src="https://www.dojoquantum.com/_next/image?url=%2Fquantum-computing.png&w=96&q=75">
 <br>
@@ -12,12 +17,14 @@ An agentic CLI to prototype and share quantum code.
 </p>
 
 <!-- `pip install qernel` -->
+
 Looking for the Qernel Zoo? [Go to qernelzoo.com.](https://www.qernelzoo.com)
 </div>
 
 ### Installation
 
 **Qernel is currently in a development preview and is subject to change. To be notified of all major changes, sign up for the Zoo.**
+
 
 Since this project is under active development, the best way to install `qernel` is to build from source, which requires [Rust](https://rust-lang.org/tools/install/) and [Python](https://www.python.org/downloads/).
 ```bash
