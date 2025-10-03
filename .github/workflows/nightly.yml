@@ -98,9 +98,9 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          if gh release view nightly >/dev/null 2>&1; then
-            gh release edit nightly --prerelease || true
+          if gh release view nightly --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release edit nightly --prerelease --repo "${{ github.repository }}" || true
           else
-            gh release create nightly --prerelease -t "Nightly" -n "Built from main"
+            gh release create nightly --prerelease --repo "${{ github.repository }}" -t "Nightly" -n "Built from main"
           fi
-          gh release upload nightly dist/qernel-*.tar.gz dist/SHA256SUMS --clobber
+          gh release upload nightly dist/qernel-*.tar.gz dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
