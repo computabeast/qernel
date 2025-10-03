@@ -19,6 +19,8 @@ An agentic CLI to prototype and share quantum code.
 <!-- `pip install qernel` -->
 
 Looking for the Qernel Zoo? [Go to qernelzoo.com.](https://www.qernelzoo.com)
+
+<img src=".github/QernelPrototypeGif1.gif" alt="Qernel demo" width="700">
 </div>
 
 ### Installation
@@ -83,6 +85,8 @@ qernel prototype --arxiv https://arxiv.org/abs/quant-ph/9605005
 ```
 
 ### Explaining code from existing projects
+
+<img src=".github/QernelExplainMovieGif1.gif" alt="Qernel demo" width="700">
 
 Quantum code can be specifically difficult to read through, mainly do the fact that lots of advanced math is abstracted away in helper functions. While this helps for readability, it makes experimenting and understanding different packages a pain. If you run:
 
