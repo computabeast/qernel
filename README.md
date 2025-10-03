@@ -34,8 +34,7 @@ qernel --help
 The main value of the Qernel CLI is to decrease the time it takes to convert quantum concepts in literature and math to runnable quantum programs. The current CLI offers a streamlined way to do so:
 
 ```bash 
-# Replace my-project with the name of your project
-qernel new my-project --template
+qernel new [YOUR_PROJECT_NAME] --template
 ```
 
 This will create a Git repository named `my-project` with the following structure:
@@ -71,7 +70,52 @@ qernel prototype --arxiv https://arxiv.org/abs/quant-ph/9605005
 # Creates ./arxiv-quant-ph/9605005 and runs the full prototype flow
 ```
 
-#### Limitations
+### Explaining code from existing projects
+
+Quantum code can be specifically difficult to read through, mainly do the fact that lots of advanced math is abstracted away in helper functions. While this helps for readability, it makes experimenting and understanding different packages a pain. 
+
+By running
+
+```bash
+qernel explain path/to/file.py
+```
+
+Qernel can analyze a file piece by piece and output a text explanation for each section, eg:
+
+```python
+[615 -> 634]  function _append_boundary_detectors_generic  (id=main.py::function:31) 
+
+Defines a helper that adds boundary detectors for the final round’s Z‑type stabilizers: for each stabilizer composed only of I and Z, it creates a detector linking the stabilizer’s last-round measurement to each data qubit measurement where the stabilizer has a Z. It emits a TICK after any detectors are appended.
+
+   615 | def _append_boundary_detectors_generic(
+   616 |     circuit: stim.Circuit,
+   617 |     last_round: Sequence[int],
+   618 |     stabilizers: Sequence[str],
+   619 |     data_measurements: Dict[int, int],
+   620 | ) -> None:
+   621 |     """Attach boundary detectors for Z-type stabilizers."""
+   622 |     emitted = False
+   623 |     for stab_index, stabilizer in enumerate(stabilizers):
+   624 |         if not _is_z_type(stabilizer):
+   625 |             continue
+   626 |         targets = [_rec_target(circuit, last_round[stab_index])]
+   627 |         for data_index, pauli in enumerate(stabilizer):
+   628 |             if pauli == "Z":
+   629 |                 targets.append(_rec_target(circuit, data_measurements[data_index]))
+   630 |         if len(targets) > 1:
+   631 |             circuit.append("DETECTOR", targets)
+   632 |             emitted = True
+   633 |     if emitted:
+   634 |         circuit.append("TICK")
+```
+
+You can also output results of the file to Markdown by adding the `--markdown` flag:
+
+#### Tips:
+ - `qernel explain` works best for files over 1000 lines, but we're working on larger context sizes.
+ - Run `qernel explain --help` to see the full functionality.
+
+### Limitations
 
 - This project currently relies on AI models that are not optimized for quantum computing concepts/programming, and therefore may not always produce accurate results. **We are actively working to solve this issue.** However, we've seen strong potential in AI models to mathetmatically reason (see [here](https://deepmind.google/discover/blog/advanced-version-of-gemini-with-deep-think-officially-achieves-gold-medal-standard-at-the-international-mathematical-olympiad/), [here](https://x.com/alexwei_/status/1946477742855532918)), and expect this accuracy gap to decrease over time.
 - The core infrastructure logic to edit and maintain files in a repository was ported over from the [Codex CLI](https://github.com/openai/codex), and as a result, currently only works with OpenAI models. The [main agent loop]() natively supports the `codex-mini-latest` and `gpt-5-codex` models, if you'd like to use another model, you might need to edit the code and rebuild until we extend the support.
@@ -79,7 +123,7 @@ qernel prototype --arxiv https://arxiv.org/abs/quant-ph/9605005
 - We're actively working to migrate away from the OpenAI API to [Ollama](https://ollama.com), which will allow you to run your own models locally on your computer, access a suite of open source models, or use a cloud model if you wish.
 
 
-#### Tips for best performance
+### Tips for best performance
 
 - For one-shot prototyping of arXiv papers, it's highly recommended to use `gpt-5-codex` with detailed implementation notes in `spec.md`. The model is surprisingly good if you tell it exactly what you want. The drawbacks are that it's expensive.
 - For smaller examples that do not involve high context, `codex-mini-latest` with a well formatted spec file and well written tests can often get the job done.

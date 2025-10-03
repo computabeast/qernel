@@ -41,3 +41,6 @@ logs/
 # Project specific
 proj/
 old/
+
+# Ignore tests for now
+tests/

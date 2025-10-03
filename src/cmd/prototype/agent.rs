@@ -48,7 +48,9 @@ pub fn run_agent_loop(
     if argv.is_empty() { anyhow::bail!("empty test_cmd"); }
 
     // Minimal AI loop using OpenAI Chat Completions
-    let api_key = std::env::var("OPENAI_API_KEY").context("OPENAI_API_KEY not set")?;
+    // Resolve API key from env or stored config without mutating process env
+    let api_key = crate::util::get_openai_api_key_from_env_or_config()
+        .ok_or_else(|| anyhow::anyhow!("OPENAI_API_KEY not set. You can set it via env or run 'qernel auth --set-openai-key'."))?;
     let mut iteration: u32 = 0;
     let mut failure_context = String::new();
     
