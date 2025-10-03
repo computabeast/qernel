@@ -1,6 +1,6 @@
 
 <p align="center">
-<code>curl -fsSL http://qernelzoo.com/install.sh | bash</code>
+<code>curl -fsSL https://qernelzoo.com/install.sh | bash</code>
 </div>
 
 <div align="center">
@@ -28,7 +28,7 @@ Looking for the Qernel Zoo? [Go to qernelzoo.com.](https://www.qernelzoo.com)
 Since this project is under active development, the best way to install `qernel` is through our nightly builds:
 
 ```
-curl -fsSL http://qernelzoo.com/install.sh | bash
+curl -fsSL https://qernelzoo.com/install.sh | bash
 ```
 
 Otherwise, you can build from source:
