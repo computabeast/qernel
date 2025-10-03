@@ -27,7 +27,7 @@ qernel-codex-core-shim = { path = "src/exe/core", version = "0.1.0-alpha" }
 qernel-apply-patch-shim = { path = "src/exe/apply-patch", version = "0.1.0-alpha" }
 async-channel = "2"
 crossbeam-channel = "0.5"
-reqwest = { version = "0.12", features = ["blocking", "json"] }
+reqwest = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "signal", "sync", "io-std", "io-util"] }
 shlex = "1"
 url = "2.5"
@@ -75,6 +75,7 @@ tokio = { version = "1", features = ["io-std", "macros", "process", "rt-multi-th
 tracing = { version = "0.1", features = ["log"] }
 which = "6"
 shlex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "http2", "stream", "blocking"] }
 
 [workspace.lints.rust]
 unused_imports = "warn"
