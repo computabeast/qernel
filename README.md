@@ -67,7 +67,6 @@ Or, one-shot prototype an arXiv paper into a fresh project:
 
 ```bash
 qernel prototype --arxiv https://arxiv.org/abs/quant-ph/9605005
-# Creates ./arxiv-quant-ph/9605005 and runs the full prototype flow
 ```
 
 ### Explaining code from existing projects
