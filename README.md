@@ -8,6 +8,7 @@ An agentic CLI to prototype and share quantum code.
 <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.9+-6828b2.svg?style=flat-square&logo=python&logoColor=white" alt="Compatible with Python versions 3.9 and higher" style="vertical-align: middle;"></a>
 <!-- <a href="https://pypi.org/project/qernel"><img src="https://img.shields.io/pypi/v/qernel.svg?logo=python&logoColor=white&label=PyPI&style=flat-square&color=9d3bb8" alt="Qernel project on PyPI" style="vertical-align: middle;"></a> -->
 <a href="https://unitary.foundation"><img src="https://img.shields.io/badge/Supported%20By-Unitary%20Foundation-FFFF00.svg" alt="Unitary Foundation" style="vertical-align: middle;"></a>
+<a href="https://github.com/computabeast/qernel/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-3c60b1.svg?logo=opensourceinitiative\&logoColor=white\&style=flat-square" alt="Apache 2.0 License" style="vertical-align: middle;"></a>
 </p>
 
 <!-- `pip install qernel` -->
