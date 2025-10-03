@@ -1,10 +1,17 @@
 
-<p align="center">
-<code>curl -fsSL https://qernelzoo.com/install.sh | bash</code>
-</div>
 
 <div align="center">
 <img alt="Qernel logo" width="96px" src="https://www.dojoquantum.com/_next/image?url=%2Fquantum-computing.png&w=96&q=75">
+
+<p align="center">
+<code>curl -fsSL https://qernelzoo.com/install.sh | bash</code>
+</p>
+
+
+<img src=".github/QernelPrototypeGif1.gif" alt="Qernel demo" width="700">
+
+
+
 <br>
 
 An agentic CLI to prototype and share quantum code.
@@ -19,8 +26,6 @@ An agentic CLI to prototype and share quantum code.
 <!-- `pip install qernel` -->
 
 Looking for the Qernel Zoo? [Go to qernelzoo.com.](https://www.qernelzoo.com)
-
-<img src=".github/QernelPrototypeGif1.gif" alt="Qernel demo" width="700">
 </div>
 
 ### Installation
