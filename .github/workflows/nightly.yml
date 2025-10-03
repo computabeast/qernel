@@ -38,28 +38,39 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set isolated CARGO_TARGET_DIR
+        shell: bash
+        run: echo "CARGO_TARGET_DIR=$GITHUB_WORKSPACE/target-${{ matrix.target }}-${{ matrix.use_cross }}" >> $GITHUB_ENV
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
 
-      - name: Build
-        shell: bash
+      - uses: Swatinem/rust-cache@v2
+        if: ${{ matrix.use_cross != 'true' }}
+
+      - name: Build (via cross)
+        if: ${{ matrix.use_cross == 'true' }}
+        env:
+          CROSS_CONTAINER_OPTS: "--env CARGO_TARGET_DIR=${{ env.CARGO_TARGET_DIR }}"
         run: |
           set -euxo pipefail
-          if [[ "${{ matrix.use_cross }}" == "true" ]]; then
-            cargo install cross --git https://github.com/cross-rs/cross
-            cross build --release --target ${{ matrix.target }}
-          else
-            cargo build --release --target ${{ matrix.target }}
-          fi
+          cargo install cross --git https://github.com/cross-rs/cross --locked
+          cross build --release --target ${{ matrix.target }}
+
+      - name: Build (native)
+        if: ${{ matrix.use_cross != 'true' }}
+        run: |
+          set -euxo pipefail
+          cargo build --release --target ${{ matrix.target }}
 
       - name: Package
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p pkg
-          BIN="target/${{ matrix.target }}/release/qernel"
+          BIN="${CARGO_TARGET_DIR:-target}/${{ matrix.target }}/release/qernel"
           if [[ "${{ matrix.plat_os }}" == "darwin" ]]; then strip -x "$BIN" || true; else strip "$BIN" || true; fi
           chmod +x "$BIN"
           cp "$BIN" pkg/qernel
