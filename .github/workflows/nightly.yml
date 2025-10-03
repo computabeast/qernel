@@ -29,11 +29,6 @@ jobs:
             plat_arch: x64
             use_cross: false
 
-          - os: ubuntu-22.04
-            target: aarch64-unknown-linux-gnu
-            plat_os: linux
-            plat_arch: arm64
-            use_cross: true
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -48,9 +43,8 @@ jobs:
         run: |
           set -euxo pipefail
           if [[ "${{ matrix.use_cross }}" == "true" ]]; then
-            cargo install cross --git https://github.com/cross-rs/cross --locked
-            cross --image ghcr.io/cross-rs/aarch64-unknown-linux-gnu:main \
-              build --release --target ${{ matrix.target }}
+            cargo install cross --git https://github.com/cross-rs/cross
+            cross build --release --target ${{ matrix.target }}
           else
             cargo build --release --target ${{ matrix.target }}
           fi
