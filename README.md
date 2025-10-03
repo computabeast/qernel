@@ -82,7 +82,6 @@ Qernel can analyze a file piece by piece and output a text explanation for each 
 <p align="center">
   <img src=".github/qernelexplain.png" alt="Qernel explain output preview" width="900" />
   <br>
-  <em>Explaining code from an existing project</em>
 </p>
 
 You can also output results of the file to Markdown by adding the `--markdown` flag:
