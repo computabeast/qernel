@@ -25,8 +25,13 @@ Looking for the Qernel Zoo? [Go to qernelzoo.com.](https://www.qernelzoo.com)
 
 **Qernel is currently in a development preview and is subject to change. To be notified of all major changes, sign up for the Zoo.**
 
+Since this project is under active development, the best way to install `qernel` is through our nightly builds:
 
-Since this project is under active development, the best way to install `qernel` is to build from source, which requires [Rust](https://rust-lang.org/tools/install/) and [Python](https://www.python.org/downloads/).
+```
+curl -fsSL http://qernelzoo.com/install.sh | bash
+```
+
+Otherwise, you can build from source:
 ```bash
 git clone https://github.com/computabeast/qernel.git
 cd qernel
