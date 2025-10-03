@@ -80,28 +80,30 @@ jobs:
         with:
           path: dist
 
-      - name: Flatten + checksums
+      - name: Checksums
         shell: bash
         run: |
           set -euxo pipefail
           cd dist
-          find . -name 'qernel-*.tar.gz' -maxdepth 2 -exec mv {} . \;
-          rm -rf qernel-*
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum qernel-*.tar.gz > SHA256SUMS
-          else
-            shasum -a 256 qernel-*.tar.gz > SHA256SUMS
+          mapfile -t FILES < <(find . -type f -name 'qernel-*.tar.gz' | sort)
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "No tarballs found; check earlier build jobs"
+            exit 1
           fi
 
-      - name: Create/refresh 'nightly' prerelease and overwrite assets
+          if command -v sha256sum >/dev/null 2>&1; then
+            for f in "${FILES[@]}"; do sha256sum "$f"; done | sed 's#  \./##' > SHA256SUMS
+          else
+            for f in "${FILES[@]}"; do shasum -a 256 "$f"; done | sed 's#  \./##' > SHA256SUMS
+          fi
+
+      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euxo pipefail
-          if gh release view nightly >/dev/null 2>&1; then
-            gh release edit nightly --prerelease || true
-          else
-            gh release create nightly --prerelease -t "Nightly" -n "Built from main"
-          fi
-          gh release upload nightly dist/qernel-*.tar.gz dist/SHA256SUMS --clobber
+          TAG="${GITHUB_REF_NAME}"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --latest --generate-notes
+          # upload all tarballs from any subfolder + the checksums file
+          gh release upload "$TAG" dist/SHA256SUMS $(find dist -type f -name 'qernel-*.tar.gz' -print) --clobber
