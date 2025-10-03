@@ -73,6 +73,12 @@ enum Commands {
         /// Enable debug logging to .logs file
         #[arg(long)]
         debug: bool,
+        /// Use existing .qernel/spec.md only (skip papers and content_files processing)
+        #[arg(long)]
+        spec_only: bool,
+        /// Use .qernel/spec.md and content_files only (skip papers processing)
+        #[arg(long)]
+        spec_and_content_only: bool,
         /// One-shot prototype an arXiv paper URL (creates new project arxiv-<id>)
         #[arg(long)]
         arxiv: Option<String>,
@@ -109,8 +115,8 @@ fn main() -> Result<()> {
         Commands::Auth { set_openai_key, unset_openai_key } => cmd::login::handle_auth_with_flags(set_openai_key, unset_openai_key),
         Commands::Push { remote, url, branch, no_commit } => cmd::push::handle_push(remote, url, branch, no_commit),
         Commands::Pull { repo, dest, branch, server } => cmd::pull::handle_pull(repo, dest, branch, server),
-        Commands::Prototype { cwd, model, max_iters, debug, arxiv } => {
-            if let Some(url) = arxiv { cmd::prototype::quickstart_arxiv(url, model, max_iters, debug) } else { cmd::prototype::handle_prototype(cwd, model, max_iters, debug) }
+        Commands::Prototype { cwd, model, max_iters, debug, spec_only, spec_and_content_only, arxiv } => {
+            if let Some(url) = arxiv { cmd::prototype::quickstart_arxiv(url, model, max_iters, debug) } else { cmd::prototype::handle_prototype(cwd, model, max_iters, debug, spec_only, spec_and_content_only) }
         }
         Commands::Explain { files, per, model, markdown, output, no_pager, max_chars } => {
             cmd::explain::handle_explain(files, per, model, markdown, output, !no_pager, max_chars)

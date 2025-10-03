@@ -16,7 +16,7 @@ use crate::cmd::prototype::logging::{debug_log, init_debug_logging};
 use crate::config::save_config;
 
 /// Main prototype handler - orchestrates the entire prototype workflow
-pub fn handle_prototype(cwd: String, model: String, max_iters: u32, debug: bool) -> Result<()> {
+pub fn handle_prototype(cwd: String, model: String, max_iters: u32, debug: bool, spec_only: bool, spec_and_content_only: bool) -> Result<()> {
     let cwd_path = Path::new(&cwd);
     let cwd_abs = cwd_path.canonicalize().unwrap_or_else(|_| cwd_path.to_path_buf());
     
@@ -39,13 +39,21 @@ pub fn handle_prototype(cwd: String, model: String, max_iters: u32, debug: bool)
     
     debug_log(&debug_file, "🔬 Starting prototype implementation...", debug);
     
-    // Process any papers from config
-    mineru::process_papers(&config.papers, &cwd_abs)?;
-    
-    // Process any content files from config
-    if let Some(content_files) = &config.content_files {
-        mineru::process_content_files(content_files, &cwd_abs)?;
-    }
+    // Conditional ingestion based on flags
+    if !spec_only && !spec_and_content_only {
+        // Process any papers from config
+        mineru::process_papers(&config.papers, &cwd_abs)?;
+        
+        // Process any content files from config
+        if let Some(content_files) = &config.content_files {
+            mineru::process_content_files(content_files, &cwd_abs)?;
+        }
+    } else if spec_and_content_only {
+        // Skip papers, process content files only
+        if let Some(content_files) = &config.content_files {
+            mineru::process_content_files(content_files, &cwd_abs)?;
+        }
+    } // spec_only: skip both
     
     // Read .qernel/spec.md for implementation goals
     let goal = read_spec_goal(&cwd_abs)?;
@@ -82,7 +90,7 @@ pub fn quickstart_arxiv(url: String, model: String, max_iters: u32, debug: bool)
     save_config(&cfg, &config_path)?;
 
     // 4) Run prototype in that folder
-    handle_prototype(folder, model, max_iters, debug)
+    handle_prototype(folder, model, max_iters, debug, false, false)
 }
 
 fn parse_arxiv_id(url: &str) -> Option<String> {
