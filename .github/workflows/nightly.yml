@@ -38,39 +38,28 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set isolated CARGO_TARGET_DIR
-        shell: bash
-        run: echo "CARGO_TARGET_DIR=$GITHUB_WORKSPACE/target-${{ matrix.target }}-${{ matrix.use_cross }}" >> $GITHUB_ENV
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-
       - uses: Swatinem/rust-cache@v2
-        if: ${{ matrix.use_cross != 'true' }}
 
-      - name: Build (via cross)
-        if: ${{ matrix.use_cross == 'true' }}
-        env:
-          CROSS_CONTAINER_OPTS: "--env CARGO_TARGET_DIR=${{ env.CARGO_TARGET_DIR }}"
+      - name: Build
+        shell: bash
         run: |
           set -euxo pipefail
-          cargo install cross --git https://github.com/cross-rs/cross --locked
-          cross build --release --target ${{ matrix.target }}
-
-      - name: Build (native)
-        if: ${{ matrix.use_cross != 'true' }}
-        run: |
-          set -euxo pipefail
-          cargo build --release --target ${{ matrix.target }}
+          if [[ "${{ matrix.use_cross }}" == "true" ]]; then
+            cargo install cross --git https://github.com/cross-rs/cross
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
 
       - name: Package
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p pkg
-          BIN="${CARGO_TARGET_DIR:-target}/${{ matrix.target }}/release/qernel"
+          BIN="target/${{ matrix.target }}/release/qernel"
           if [[ "${{ matrix.plat_os }}" == "darwin" ]]; then strip -x "$BIN" || true; else strip "$BIN" || true; fi
           chmod +x "$BIN"
           cp "$BIN" pkg/qernel
@@ -91,30 +80,28 @@ jobs:
         with:
           path: dist
 
-      - name: Checksums
+      - name: Flatten + checksums
         shell: bash
         run: |
           set -euxo pipefail
           cd dist
-          mapfile -t FILES < <(find . -type f -name 'qernel-*.tar.gz' | sort)
-          if [ "${#FILES[@]}" -eq 0 ]; then
-            echo "No tarballs found; check earlier build jobs"
-            exit 1
-          fi
-
+          find . -name 'qernel-*.tar.gz' -maxdepth 2 -exec mv {} . \;
+          rm -rf qernel-*
           if command -v sha256sum >/dev/null 2>&1; then
-            for f in "${FILES[@]}"; do sha256sum "$f"; done | sed 's#  \./##' > SHA256SUMS
+            sha256sum qernel-*.tar.gz > SHA256SUMS
           else
-            for f in "${FILES[@]}"; do shasum -a 256 "$f"; done | sed 's#  \./##' > SHA256SUMS
+            shasum -a 256 qernel-*.tar.gz > SHA256SUMS
           fi
 
-      - name: Publish GitHub Release
+      - name: Create/refresh 'nightly' prerelease and overwrite assets
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euxo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --latest --generate-notes
-          # upload all tarballs from any subfolder + the checksums file
-          gh release upload "$TAG" dist/SHA256SUMS $(find dist -type f -name 'qernel-*.tar.gz' -print) --clobber
+          if gh release view nightly >/dev/null 2>&1; then
+            gh release edit nightly --prerelease || true
+          else
+            gh release create nightly --prerelease -t "Nightly" -n "Built from main"
+          fi
+          gh release upload nightly dist/qernel-*.tar.gz dist/SHA256SUMS --clobber
