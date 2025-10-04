@@ -8,7 +8,8 @@
 </p>
 
 
-<video src=".github/QernelGif1.mp4" width="720" controls autoplay muted loop playsinline controlslist="nodownload noplaybackrate nofullscreen" disablepictureinpicture oncontextmenu="return false"></video>
+
+https://github.com/user-attachments/assets/c6b71e4c-f3d5-4186-bfaa-7f0a1d03bb42
 
 
 
