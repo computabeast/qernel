@@ -8,7 +8,7 @@
 </p>
 
 
-<img src=".github/QernelPrototypeGif1.gif" alt="Qernel demo" width="700">
+<video src=".github/QernelGif1.mp4" width="720" controls autoplay muted loop playsinline controlslist="nodownload noplaybackrate nofullscreen" disablepictureinpicture oncontextmenu="return false"></video>
 
 
 
