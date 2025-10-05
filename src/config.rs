@@ -9,6 +9,8 @@ pub struct QernelConfig {
     pub papers: Vec<PaperConfig>,
     pub content_files: Option<Vec<String>>,
     pub benchmarks: BenchmarkConfig,
+    #[serde(default)]
+    pub explain_model: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +51,7 @@ impl Default for QernelConfig {
             benchmarks: BenchmarkConfig {
                 test_command: "python -m pytest src/tests.py -v".to_string(),
             },
+            explain_model: Some("codex-mini-latest".to_string()),
         }
     }
 }

@@ -8,6 +8,18 @@ pub struct Config {
     pub default_server: Option<String>,
     /// Optional OpenAI API key for prototyping features
     pub openai_api_key: Option<String>,
+    /// Provider selection: "openai" or "ollama"
+    #[serde(default)]
+    pub provider: Option<String>,
+    /// Base URL for Ollama when provider is "ollama"
+    #[serde(default)]
+    pub ollama_base_url: Option<String>,
+    /// Default model for the prototype command
+    #[serde(default)]
+    pub default_prototype_model: Option<String>,
+    /// Default model for the explain command
+    #[serde(default)]
+    pub default_explain_model: Option<String>,
 }
 
 pub fn load_config() -> Result<Config> {
@@ -76,6 +88,24 @@ pub fn unset_openai_api_key_in_config() -> Result<()> {
     let mut cfg = load_config().unwrap_or_default();
     cfg.openai_api_key = None;
     save_config(&cfg)
+}
+
+/// Resolve default prototype model from persisted config or fall back.
+pub fn get_default_prototype_model() -> String {
+    load_config()
+        .ok()
+        .and_then(|c| c.default_prototype_model)
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "gpt-5-codex".to_string())
+}
+
+/// Resolve default explain model from persisted config or fall back.
+pub fn get_default_explain_model() -> String {
+    load_config()
+        .ok()
+        .and_then(|c| c.default_explain_model)
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "codex-mini-latest".to_string())
 }
 
 

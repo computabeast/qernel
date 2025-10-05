@@ -1,57 +1,69 @@
 use anyhow::{Context, Result};
 use serde_json::json;
+use crate::common::network::{default_client, detect_provider, parse_ollama_text, parse_openai_text, ProviderKind, ollama_chat_url, openai_responses_url, preflight_check};
 
 pub fn call_text_model(api_key: &str, model: &str, system: &str, user: &str) -> Result<String> {
     use reqwest::blocking::Client;
-    if api_key.is_empty() { anyhow::bail!("OPENAI_API_KEY is empty"); }
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(300))
-        .build()
-        .context("create http client")?;
+    let provider = detect_provider();
+    let use_ollama = provider == ProviderKind::Ollama;
 
-    // Use Responses API for consistency with existing code
-    let input = vec![
-        json!({"role":"system","content":system}),
-        json!({"role":"user","content":user}),
-    ];
+    if !use_ollama && api_key.is_empty() { anyhow::bail!("OPENAI_API_KEY is empty"); }
+    let client: Client = default_client(300)?;
+    preflight_check(&client, provider, model)?;
 
-    let resp = client
-        .post("https://api.openai.com/v1/responses")
-        .bearer_auth(api_key)
-        .json(&json!({
-            "model": model,
-            "input": input,
-            "parallel_tool_calls": false
-        }))
-        .send()
-        .context("send openai request")?;
+    if use_ollama {
+        // Ollama via OpenAI-compatible Chat Completions API
+        let url = ollama_chat_url();
+        let messages = vec![
+            json!({"role": "system", "content": system}),
+            json!({"role": "user", "content": user}),
+        ];
 
-    let status = resp.status();
-    let text = resp.text().unwrap_or_default();
-    if !status.is_success() {
-        anyhow::bail!("OpenAI error {}: {}", status, text);
-    }
-    let body: serde_json::Value = serde_json::from_str(&text).context("parse openai json")?;
+        let resp = client
+            .post(&url)
+            .json(&json!({
+                "model": model,
+                "messages": messages,
+                "stream": false
+            }))
+            .send()
+            .context("send ollama chat request")?;
 
-    // Prefer output_text, else join message content
-    if let Some(s) = body.get("output_text").and_then(|v| v.as_str()) {
-        return Ok(s.to_string());
-    }
-    if let Some(arr) = body.get("output").and_then(|v| v.as_array()) {
-        // Try to concatenate text parts
-        let mut buf = String::new();
-        for item in arr {
-            if item.get("type").and_then(|v| v.as_str()) == Some("message") {
-                if let Some(parts) = item.get("content").and_then(|v| v.as_array()) {
-                    for p in parts {
-                        if let Some(t) = p.get("text").and_then(|t| t.as_str()) { buf.push_str(t); }
-                    }
-                }
-            }
+        let status = resp.status();
+        let text = resp.text().unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("Ollama error {}: {}", status, text);
         }
-        if !buf.is_empty() { return Ok(buf); }
+        let body: serde_json::Value = serde_json::from_str(&text).context("parse ollama json")?;
+        if let Some(s) = parse_ollama_text(&body) { return Ok(s); }
+        anyhow::bail!("No text in Ollama response")
+    } else {
+        // OpenAI Responses API (existing behavior)
+        let input = vec![
+            json!({"role":"system","content":system}),
+            json!({"role":"user","content":user}),
+        ];
+
+        let resp = client
+            .post(&openai_responses_url())
+            .bearer_auth(api_key)
+            .json(&json!({
+                "model": model,
+                "input": input,
+                "parallel_tool_calls": false
+            }))
+            .send()
+            .context("send openai request")?;
+
+        let status = resp.status();
+        let text = resp.text().unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("OpenAI error {}: {}", status, text);
+        }
+        let body: serde_json::Value = serde_json::from_str(&text).context("parse openai json")?;
+        if let Some(s) = parse_openai_text(&body) { return Ok(s); }
+        anyhow::bail!("No text in OpenAI response")
     }
-    anyhow::bail!("No text in OpenAI response")
 }
 
 

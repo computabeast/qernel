@@ -3,7 +3,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::env;
 use std::io::{self, Read};
 
-use crate::util::{load_config, save_config, get_openai_api_key_from_env_or_config, set_openai_api_key_in_config, unset_openai_api_key_in_config};
+use crate::util::{load_config, save_config, set_openai_api_key_in_config, unset_openai_api_key_in_config};
 use owo_colors::OwoColorize;
 use reqwest::blocking::Client;
 use serde::Deserialize;
@@ -44,13 +44,7 @@ pub fn handle_auth_with_flags(set_openai_key: bool, unset_openai_key: bool) -> R
             let masked = if token.len() > 8 { format!("{}...", &token[..8]) } else { "...".to_string() };
             println!("{} Personal access token: {}", crate::util::sym_check(ce), masked.blue().bold());
             // Also surface OpenAI key status
-            let has_openai = get_openai_api_key_from_env_or_config().is_some();
-            if has_openai {
-                println!("{} OpenAI API key detected. Note: prototyping uses OpenAI today; we're migrating to Ollama/open-source models soon.", crate::util::sym_check(ce));
-            } else {
-                println!("{} Warning: No OpenAI API key detected. Prototyping features won't be available until a key is set.", crate::util::sym_question(ce));
-                println!("   You can set one with: qernel auth --set-openai-key");
-            }
+            // Surface of API key status moved to `qernel provider --show`
 
             if let Ok(client) = Client::builder().timeout(std::time::Duration::from_secs(10)).build() {
                 if let Ok(r) = client

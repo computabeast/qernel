@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde_json::json;
+use crate::common::network::{default_client, detect_provider, ollama_chat_url, openai_responses_url, ProviderKind, preflight_check};
 use std::{path::PathBuf};
 use std::fs;
 use base64::{Engine as _, engine::general_purpose};
@@ -50,95 +51,129 @@ pub fn make_openai_request_with_images(
         create_apply_patch_json_tool,      // "function" (JSON schema)
     };
     
-    // Validate API key
-    if api_key.is_empty() {
-        anyhow::bail!("OPENAI_API_KEY is empty");
-    }
-    if !api_key.starts_with("sk-") {
-        anyhow::bail!("OPENAI_API_KEY doesn't look like a valid OpenAI API key (should start with 'sk-')");
+    // Provider selection
+    let provider = detect_provider();
+    let use_ollama = provider == ProviderKind::Ollama;
+
+    // Validate API key for OpenAI only
+    if !use_ollama {
+        if api_key.is_empty() {
+            anyhow::bail!("OPENAI_API_KEY is empty");
+        }
+        if !api_key.starts_with("sk-") {
+            anyhow::bail!("OPENAI_API_KEY doesn't look like a valid OpenAI API key (should start with 'sk-')");
+        }
     }
     debug_log(debug_file, &format!("[ai] Using API key: {}...", &api_key[..api_key.len().min(10)]), debug_file.is_some());
 
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(600)) // 10 minute timeout
-        .build()
-        .context("Failed to create HTTP client")?;
+    let client: Client = default_client(600)?; // 10 minute timeout
+    preflight_check(&client, provider, model)?;
 
-    // Select tools based on model
-    let use_custom_tools = model.starts_with("gpt-5"); // e.g., "gpt-5-codex"
-    
+    // Select tools based on model (OpenAI Responses only). Ollama path doesn't use tools.
+    let use_custom_tools = model.starts_with("gpt-5");
     let tools = if use_custom_tools {
-        // GPT-5 models use custom freeform tools
         serde_json::to_value(vec![create_apply_patch_freeform_tool()]).expect("tools json")
     } else {
-        // codex-mini-latest and other models use JSON function tools
         serde_json::to_value(vec![create_apply_patch_json_tool()]).expect("tools json")
     };
     
     debug_log(debug_file, &format!("[ai] tools json: {}",
         serde_json::to_string_pretty(&tools).unwrap_or_default()), debug_file.is_some());
     
-    // Add retry logic for OpenAI API calls
+    // Add retry logic for model API calls
     let mut attempts = 0;
     let max_attempts = 3;
     let resp = loop {
         attempts += 1;
-        debug_log(debug_file, &format!("[ai] OpenAI API attempt {}/{}", attempts, max_attempts), debug_file.is_some());
+        debug_log(debug_file, &format!("[ai] Model API attempt {}/{} (provider={})", attempts, max_attempts, if use_ollama { "ollama" } else { "openai" }), debug_file.is_some());
         
-        // Build the input array with optional images
-        let mut input_array = vec![
-            json!({"role": "system", "content": system_prompt}),
-        ];
-        
-        // Add user content with optional images
-        if let Some(image_paths) = &images {
-            if !image_paths.is_empty() {
-                debug_log(debug_file, &format!("[ai] attempting to encode {} images for request", image_paths.len()), debug_file.is_some());
-                
-                let mut user_content = vec![json!({"type": "input_text", "text": user_prompt})];
-                let mut successful_images = 0;
-                
-                // Add each image to the content as base64 data URLs
-                for image_path in image_paths {
-                    match encode_image_to_base64(image_path) {
-                        Ok(data_url) => {
-                            user_content.push(json!({
-                                "type": "input_image",
-                                "image_url": data_url
-                            }));
-                            successful_images += 1;
-                            debug_log(debug_file, &format!("[ai] successfully encoded image: {}", image_path), debug_file.is_some());
-                        }
-                        Err(e) => {
-                            debug_log(debug_file, &format!("[ai] failed to encode image {}: {}", image_path, e), debug_file.is_some());
-                            // Continue with other images even if one fails
+        let request = if use_ollama {
+            // Build Chat Completions payload for Ollama
+            let url = ollama_chat_url();
+
+            let mut messages = vec![json!({"role": "system", "content": system_prompt})];
+
+            if let Some(image_paths) = &images {
+                if !image_paths.is_empty() {
+                    debug_log(debug_file, &format!("[ai] attempting to encode {} images for request", image_paths.len()), debug_file.is_some());
+                    let mut content_parts = vec![user_prompt.to_string()];
+                    let mut successful_images = 0;
+                    for image_path in image_paths {
+                        match encode_image_to_base64(image_path) {
+                            Ok(data_url) => {
+                                content_parts.push(format!("\n[image:{}]", data_url));
+                                successful_images += 1;
+                                debug_log(debug_file, &format!("[ai] successfully encoded image: {}", image_path), debug_file.is_some());
+                            }
+                            Err(e) => {
+                                debug_log(debug_file, &format!("[ai] failed to encode image {}: {}", image_path, e), debug_file.is_some());
+                            }
                         }
                     }
+                    debug_log(debug_file, &format!("[ai] successfully encoded {} out of {} images for model request", successful_images, image_paths.len()), debug_file.is_some());
+                    messages.push(json!({"role": "user", "content": content_parts.join("\n") }));
+                } else {
+                    messages.push(json!({"role": "user", "content": user_prompt}));
                 }
-                
-                debug_log(debug_file, &format!("[ai] successfully encoded {} out of {} images for model request", successful_images, image_paths.len()), debug_file.is_some());
-                
-                input_array.push(json!({
-                    "role": "user",
-                    "content": user_content
-                }));
+            } else {
+                messages.push(json!({"role": "user", "content": user_prompt}));
+            }
+
+            client
+                .post(&url)
+                .json(&json!({
+                    "model": model,
+                    "messages": messages,
+                    "stream": false
+                }))
+        } else {
+            // Build Responses payload for OpenAI
+            let mut input_array = vec![
+                json!({"role": "system", "content": system_prompt}),
+            ];
+            if let Some(image_paths) = &images {
+                if !image_paths.is_empty() {
+                    debug_log(debug_file, &format!("[ai] attempting to encode {} images for request", image_paths.len()), debug_file.is_some());
+                    let mut user_content = vec![json!({"type": "input_text", "text": user_prompt})];
+                    let mut successful_images = 0;
+                    for image_path in image_paths {
+                        match encode_image_to_base64(image_path) {
+                            Ok(data_url) => {
+                                user_content.push(json!({
+                                    "type": "input_image",
+                                    "image_url": data_url
+                                }));
+                                successful_images += 1;
+                                debug_log(debug_file, &format!("[ai] successfully encoded image: {}", image_path), debug_file.is_some());
+                            }
+                            Err(e) => {
+                                debug_log(debug_file, &format!("[ai] failed to encode image {}: {}", image_path, e), debug_file.is_some());
+                            }
+                        }
+                    }
+                    debug_log(debug_file, &format!("[ai] successfully encoded {} out of {} images for model request", successful_images, image_paths.len()), debug_file.is_some());
+                    input_array.push(json!({
+                        "role": "user",
+                        "content": user_content
+                    }));
+                } else {
+                    input_array.push(json!({"role": "user", "content": user_prompt}));
+                }
             } else {
                 input_array.push(json!({"role": "user", "content": user_prompt}));
             }
-        } else {
-            input_array.push(json!({"role": "user", "content": user_prompt}));
-        }
-        
-        let request = client
-            .post("https://api.openai.com/v1/responses")
-            .bearer_auth(api_key)
-            .json(&json!({
-                "model": model,
-                "tools": tools,
-                "tool_choice": "auto",
-                "parallel_tool_calls": false,
-                "input": input_array
-            }));
+
+            client
+                .post(&openai_responses_url())
+                .bearer_auth(api_key)
+                .json(&json!({
+                    "model": model,
+                    "tools": tools,
+                    "tool_choice": "auto",
+                    "parallel_tool_calls": false,
+                    "input": input_array
+                }))
+        };
         
         match request.send() {
             Ok(response) => break response,
@@ -178,15 +213,19 @@ pub fn make_openai_request_with_images(
         }
     };
     
-    // Check for OpenAI API errors in the response body
+    // Check for API errors in the response body
     if let Some(error) = body.get("error") {
         if let Some(message) = error.get("message").and_then(|m| m.as_str()) {
-            anyhow::bail!("OpenAI API error: {}", message);
+            anyhow::bail!("Model API error: {}", message);
         }
     }
     
-    // Parse the response using the same logic as the original
-    parse_ai_response(&body, debug_file)
+    // Dispatch parse based on provider
+    if use_ollama {
+        parse_ai_response_ollama(&body, debug_file)
+    } else {
+        parse_ai_response(&body, debug_file)
+    }
 }
 
 fn parse_ai_response(body: &serde_json::Value, debug_file: &Option<PathBuf>) -> Result<AiStep> {
@@ -330,6 +369,26 @@ fn parse_ai_response(body: &serde_json::Value, debug_file: &Option<PathBuf>) -> 
     }
     
     anyhow::bail!("No actionable tool call or parseable text in response; output types = {:?}", kinds)
+}
+
+fn parse_ai_response_ollama(body: &serde_json::Value, debug_file: &Option<PathBuf>) -> Result<AiStep> {
+    // Expect OpenAI-compatible chat completions schema
+    if let Some(content) = body
+        .get("choices")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.get(0))
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|v| v.as_str())
+    {
+        debug_log(debug_file, &format!("[ai] ollama content (to-parse):\n{}", content), debug_file.is_some());
+        if let Ok(step) = serde_json::from_str::<AiStep>(content) {
+            return Ok(step);
+        }
+        // If it is not JSON, return as a shell no-op or generic action
+        return Ok(AiStep { action: "message".to_string(), rationale: None, patch: None, command: Some(content.to_string()) });
+    }
+    anyhow::bail!("No actionable content in Ollama response")
 }
 
 /// Encode an image file to base64 data URL

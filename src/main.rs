@@ -1,5 +1,6 @@
 mod cmd;
 mod config;
+pub mod common;
 mod util;
 
 use anyhow::Result;
@@ -67,6 +68,9 @@ enum Commands {
         /// OpenAI model to use (e.g., gpt-4o-mini)
         #[arg(long, default_value = "gpt-5-codex")]
         model: String,
+        /// Run preflight checks and exit
+        #[arg(long)]
+        check: bool,
         /// Max iterations for AI loop
         #[arg(long, default_value_t = 15)]
         max_iters: u32,
@@ -90,9 +94,12 @@ enum Commands {
         /// Granularity: function | class | block (default: function)
         #[arg(long, default_value = "function")]
         per: String,
-        /// OpenAI model to use (default: codex-mini-latest)
-        #[arg(long, default_value = "codex-mini-latest")]
-        model: String,
+        /// Optional model override (defaults resolved from YAML or tool config)
+        #[arg(long)]
+        model: Option<String>,
+        /// Run preflight checks and exit
+        #[arg(long)]
+        check: bool,
         /// Emit Markdown to .qernel/explain or to --output if provided
         #[arg(long)]
         markdown: bool,
@@ -106,6 +113,32 @@ enum Commands {
         #[arg(long)]
         max_chars: Option<usize>,
     },
+    /// Provider operations: show and set provider/base URL
+    Provider {
+        /// Show current provider configuration
+        #[arg(long)]
+        show: bool,
+        /// List available providers
+        #[arg(long)]
+        list: bool,
+        /// Run a preflight check for the current or specified model
+        #[arg(long)]
+        check: bool,
+        /// Optional model to check
+        #[arg(long)]
+        model: Option<String>,
+        /// Set provider: openai | ollama
+        #[arg(long)]
+        set: Option<String>,
+        /// Set Ollama base URL (e.g., http://localhost:11434/v1)
+        #[arg(long)]
+        base_url: Option<String>,
+        /// Set model for a specific command: prototype | explain
+        #[arg(long)]
+        set_for_cmd: Option<String>,
+        /// Optional positional model to use with --set-for-cmd
+        cmd_model: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -115,11 +148,14 @@ fn main() -> Result<()> {
         Commands::Auth { set_openai_key, unset_openai_key } => cmd::login::handle_auth_with_flags(set_openai_key, unset_openai_key),
         Commands::Push { remote, url, branch, no_commit } => cmd::push::handle_push(remote, url, branch, no_commit),
         Commands::Pull { repo, dest, branch, server } => cmd::pull::handle_pull(repo, dest, branch, server),
-        Commands::Prototype { cwd, model, max_iters, debug, spec_only, spec_and_content_only, arxiv } => {
-            if let Some(url) = arxiv { cmd::prototype::quickstart_arxiv(url, model, max_iters, debug) } else { cmd::prototype::handle_prototype(cwd, model, max_iters, debug, spec_only, spec_and_content_only) }
+        Commands::Prototype { cwd, model, check, max_iters, debug, spec_only, spec_and_content_only, arxiv } => {
+            if check { cmd::prototype::check_prototype(cwd, model) } else if let Some(url) = arxiv { cmd::prototype::quickstart_arxiv(url, model, max_iters, debug) } else { cmd::prototype::handle_prototype(cwd, model, max_iters, debug, spec_only, spec_and_content_only) }
         }
-        Commands::Explain { files, per, model, markdown, output, no_pager, max_chars } => {
-            cmd::explain::handle_explain(files, per, model, markdown, output, !no_pager, max_chars)
+        Commands::Explain { files, per, model, check, markdown, output, no_pager, max_chars } => {
+            if check { cmd::explain::check_explain(files, model) } else { cmd::explain::handle_explain(files, per, model, markdown, output, !no_pager, max_chars) }
+        }
+        Commands::Provider { show, list, set, base_url, check, model, set_for_cmd, cmd_model } => {
+            cmd::provider::handle_provider(cmd::provider::ProviderCmd { show, list, set, base_url, check, model, set_for_cmd, cmd_model })
         }
     }
 }

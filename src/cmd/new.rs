@@ -166,6 +166,7 @@ Implement the algorithms and concepts described in the research paper.
         benchmarks: crate::config::BenchmarkConfig {
             test_command: "python -m pytest src/tests.py -v".to_string(),
         },
+        explain_model: Some("codex-mini-latest".to_string()),
     };
     
     save_config(&config, &qernel_dir.join("qernel.yaml"))?;
