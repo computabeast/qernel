@@ -106,6 +106,8 @@ enum Commands {
         #[arg(long)]
         max_chars: Option<usize>,
     },
+    /// Open a tiny native window that renders HTML (macOS support today)
+    See,
 }
 
 fn main() -> Result<()> {
@@ -121,5 +123,6 @@ fn main() -> Result<()> {
         Commands::Explain { files, per, model, markdown, output, no_pager, max_chars } => {
             cmd::explain::handle_explain(files, per, model, markdown, output, !no_pager, max_chars)
         }
+        Commands::See => cmd::see::handle_see(),
     }
 }

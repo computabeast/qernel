@@ -1,0 +1,17 @@
+[package]
+name = "qernel-vision"
+version = "0.1.0-alpha"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+wry = "0.53"
+winit = "0.30"
+anyhow = "1"
+
+[lib]
+name = "qernel_vision"
+path = "src/lib.rs"
+
+
