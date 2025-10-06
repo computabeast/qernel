@@ -4,6 +4,5 @@ pub mod push;
 pub mod pull;
 pub mod prototype;
 pub mod explain;
-pub mod provider;
 pub mod see;
 
