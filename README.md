@@ -27,6 +27,8 @@ An agentic CLI to prototype and share quantum code.
 <!-- `pip install qernel` -->
 
 Looking for the Qernel Zoo? [Go to qernelzoo.com.](https://www.qernelzoo.com)
+<br />
+Want to contribute? Fill out [this Google Form.](https://docs.google.com/forms/d/e/1FAIpQLSfBkZL-JLW5YCqcFLuQUk2042jhzH8RMsZ28AC1gPN8JMblVA/viewform)
 </div>
 
 ### Installation
