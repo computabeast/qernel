@@ -5,4 +5,5 @@ pub mod pull;
 pub mod prototype;
 pub mod explain;
 pub mod see;
+pub mod provider;
 

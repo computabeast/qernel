@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Args;
-use crate::util::{load_config, save_config, Config, get_openai_api_key_from_env_or_config, sym_check, sym_question, color_enabled_stdout};
+use crate::util::{load_config, save_config, Config};
 
 #[derive(Args)]
 pub struct ProviderCmd {
@@ -32,24 +32,71 @@ pub struct ProviderCmd {
     pub set_for_cmd: Option<String>,
     /// Positional model argument when using --set-for-cmd
     pub cmd_model: Option<String>,
+
+    /// Interactive picker to choose provider and default models
+    #[arg(long)]
+    pub pick: bool,
 }
 
 pub fn handle_provider(cmd: ProviderCmd) -> Result<()> {
     let mut cfg: Config = load_config().unwrap_or_default();
-    let ce = color_enabled_stdout();
     if cmd.list {
-        println!("openai");
+        println!("qernel");
         println!("ollama");
         return Ok(());
     }
     if cmd.check {
         use reqwest::blocking::Client;
         use crate::common::network::{default_client, detect_provider, preflight_check};
-        let model = cmd.model.as_deref().unwrap_or("codex-mini-latest");
+        let model = cmd.model.as_deref().unwrap_or("qernel-auto");
         let client: Client = default_client(15)?;
         let provider = detect_provider();
         preflight_check(&client, provider, model)?;
         println!("Preflight passed for provider and model '{}'.", model);
+        return Ok(());
+    }
+    if cmd.pick {
+        use std::io::{self, Write};
+        fn prompt(prompt: &str) -> String {
+            print!("{}", prompt);
+            io::stdout().flush().ok();
+            let mut s = String::new();
+            io::stdin().read_line(&mut s).ok();
+            s.trim().to_string()
+        }
+
+        println!("Select provider:");
+        println!("  1) qernel");
+        println!("  2) ollama");
+        let choice = prompt("Enter number [1]: ");
+        let provider = match choice.as_str() {
+            "2" => "ollama",
+            _ => "qernel",
+        };
+        cfg.provider = Some(provider.to_string());
+
+        let (default_proto, default_explain) = match provider {
+            "qernel" => ("qernel-auto", "qernel-auto"),
+            "ollama" => ("llama3.1:8b", "llama3.1:8b"),
+            _ => ("qernel-auto", "qernel-auto"),
+        };
+
+        let proto = prompt(&format!("Prototype model [{}]: ", default_proto));
+        let explain = prompt(&format!("Explain model    [{}]: ", default_explain));
+        cfg.default_prototype_model = Some(if proto.is_empty() { default_proto.to_string() } else { proto });
+        cfg.default_explain_model = Some(if explain.is_empty() { default_explain.to_string() } else { explain });
+
+        if provider == "ollama" {
+            let base = prompt(&format!("Ollama base URL [{}]: ", cfg.ollama_base_url.as_deref().unwrap_or("http://localhost:11434/v1")));
+            if !base.trim().is_empty() { cfg.ollama_base_url = Some(base); }
+        }
+
+        save_config(&cfg)?;
+        println!("Saved provider '{}' with prototype='{}' and explain='{}'.",
+            provider,
+            cfg.default_prototype_model.as_deref().unwrap_or(""),
+            cfg.default_explain_model.as_deref().unwrap_or("")
+        );
         return Ok(());
     }
 
@@ -70,7 +117,7 @@ pub fn handle_provider(cmd: ProviderCmd) -> Result<()> {
     let show_mode = cmd.show || (cmd.set.is_none() && cmd.base_url.is_none());
 
     if show_mode {
-        println!("Provider: {}", cfg.provider.as_deref().unwrap_or("openai"));
+        println!("Provider: {}", cfg.provider.as_deref().unwrap_or("qernel"));
         println!("Ollama_base_url: {}", cfg.ollama_base_url.as_deref().unwrap_or("(unset, default http://localhost:11434/v1)"));
 
         // Show command-model mapping from tool defaults (not project YAML)
@@ -78,14 +125,6 @@ pub fn handle_provider(cmd: ProviderCmd) -> Result<()> {
         let explain_model = crate::util::get_default_explain_model();
         println!("Prototype_model: {}", proto_model);
         println!("Explain_model: {}", explain_model);
-
-        let has_openai = get_openai_api_key_from_env_or_config().is_some();
-        if has_openai {
-            println!("{} OpenAI API key detected. Note: prototyping uses OpenAI today; we're migrating to Ollama/open-source models soon.", sym_check(ce));
-        } else {
-            println!("{} Warning: No OpenAI API key detected. Prototyping features won't be available until a key is set.", sym_question(ce));
-            println!("   You can set one with: qernel auth --set-openai-key");
-        }
         return Ok(());
     }
 
@@ -93,8 +132,8 @@ pub fn handle_provider(cmd: ProviderCmd) -> Result<()> {
 
     if let Some(p) = cmd.set.as_deref() {
         let v = p.trim().to_lowercase();
-        if v != "openai" && v != "ollama" {
-            anyhow::bail!("invalid provider '{}': expected 'openai' or 'ollama'", p);
+        if v != "ollama" && v != "qernel" {
+            anyhow::bail!("invalid provider '{}': expected 'qernel' or 'ollama'", p);
         }
         cfg.provider = Some(v);
         changed = true;

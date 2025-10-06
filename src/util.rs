@@ -72,6 +72,19 @@ pub fn get_openai_api_key_from_env_or_config() -> Option<String> {
     }
     None
 }
+/// Resolve a Qernel personal access token from env or stored config
+pub fn get_qernel_pat_from_env_or_config() -> Option<String> {
+    if let Ok(t) = std::env::var("QERNEL_TOKEN") {
+        let t = t.trim().to_string();
+        if !t.is_empty() { return Some(t); }
+    }
+    if let Ok(cfg) = load_config() {
+        if let Some(t) = cfg.token.as_ref() {
+            if !t.trim().is_empty() { return Some(t.trim().to_string()); }
+        }
+    }
+    None
+}
 
 // Ensure the current process has OPENAI_API_KEY set. Returns true if set via config.
 // Note: In Rust 2024, mutating process env at runtime is unsafe; callers should
@@ -96,7 +109,7 @@ pub fn get_default_prototype_model() -> String {
         .ok()
         .and_then(|c| c.default_prototype_model)
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "gpt-5-codex".to_string())
+        .unwrap_or_else(|| "qernel-auto".to_string())
 }
 
 /// Resolve default explain model from persisted config or fall back.
@@ -105,7 +118,7 @@ pub fn get_default_explain_model() -> String {
         .ok()
         .and_then(|c| c.default_explain_model)
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "codex-mini-latest".to_string())
+        .unwrap_or_else(|| "qernel-auto".to_string())
 }
 
 

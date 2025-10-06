@@ -65,8 +65,8 @@ enum Commands {
         /// Working directory
         #[arg(long, default_value = ".")]
         cwd: String,
-        /// OpenAI model to use (e.g., gpt-4o-mini)
-        #[arg(long, default_value = "gpt-5-codex")]
+        /// Model to use (default depends on provider)
+        #[arg(long, default_value = "qernel-auto")]
         model: String,
         /// Max iterations for AI loop
         #[arg(long, default_value_t = 15)]
@@ -94,8 +94,8 @@ enum Commands {
         /// Granularity: function | class | block (default: function)
         #[arg(long, default_value = "function")]
         per: String,
-        /// OpenAI model to use (default: codex-mini-latest)
-        #[arg(long, default_value = "codex-mini-latest")]
+        /// Model to use (default depends on provider)
+        #[arg(long, default_value = "qernel-auto")]
         model: String,
         /// Emit Markdown to .qernel/explain or to --output if provided
         #[arg(long)]
@@ -112,6 +112,35 @@ enum Commands {
         /// Run preflight checks and exit
         #[arg(long)]
         check: bool,
+    },
+    /// Provider operations: show and set provider/base URL
+    Provider {
+        /// Show current provider configuration
+        #[arg(long)]
+        show: bool,
+        /// List available providers
+        #[arg(long)]
+        list: bool,
+        /// Run a preflight check
+        #[arg(long)]
+        check: bool,
+        /// Optional model to check
+        #[arg(long)]
+        model: Option<String>,
+        /// Set provider: openai | ollama
+        #[arg(long)]
+        set: Option<String>,
+        /// Set base URL (used for Ollama)
+        #[arg(long)]
+        base_url: Option<String>,
+        /// Set default model for a specific command
+        #[arg(long)]
+        set_for_cmd: Option<String>,
+        /// Positional model argument when using --set-for-cmd
+        cmd_model: Option<String>,
+        /// Interactive picker to choose provider and default models
+        #[arg(long)]
+        pick: bool,
     },
     /// Open a tiny native window to view the Qernel Zoo or a URL (macOS support today)
     See {
@@ -133,6 +162,9 @@ fn main() -> Result<()> {
         }
         Commands::Explain { files, per, model, markdown, output, no_pager, max_chars, check } => {
             if check { cmd::explain::check_explain(files, None) } else { cmd::explain::handle_explain(files, per, Some(model), markdown, output, !no_pager, max_chars) }
+        }
+        Commands::Provider { show, list, set, base_url, check, model, set_for_cmd, cmd_model, pick } => {
+            cmd::provider::handle_provider(cmd::provider::ProviderCmd { show, list, set, base_url, check, model, set_for_cmd, cmd_model, pick })
         }
         Commands::See { url } => cmd::see::handle_see(url),
     }

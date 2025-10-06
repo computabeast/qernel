@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde_json::json;
-use crate::common::network::{default_client, detect_provider, ollama_chat_url, openai_responses_url, ProviderKind, preflight_check};
+use crate::common::network::{default_client, detect_provider, ollama_chat_url, qernel_model_url, ProviderKind, preflight_check};
+use crate::util::get_qernel_pat_from_env_or_config;
 use std::{path::PathBuf};
 use std::fs;
 use base64::{Engine as _, engine::general_purpose};
@@ -54,16 +55,9 @@ pub fn make_openai_request_with_images(
     // Provider selection
     let provider = detect_provider();
     let use_ollama = provider == ProviderKind::Ollama;
+    let use_qernel = provider == ProviderKind::Qernel;
 
-    // Validate API key for OpenAI only
-    if !use_ollama {
-        if api_key.is_empty() {
-            anyhow::bail!("OPENAI_API_KEY is empty");
-        }
-        if !api_key.starts_with("sk-") {
-            anyhow::bail!("OPENAI_API_KEY doesn't look like a valid OpenAI API key (should start with 'sk-')");
-        }
-    }
+    // No API key validation required for Qernel/Ollama
     debug_log(debug_file, &format!("[ai] Using API key: {}...", &api_key[..api_key.len().min(10)]), debug_file.is_some());
 
     let client: Client = default_client(600)?; // 10 minute timeout
@@ -85,7 +79,7 @@ pub fn make_openai_request_with_images(
     let max_attempts = 3;
     let resp = loop {
         attempts += 1;
-        debug_log(debug_file, &format!("[ai] Model API attempt {}/{} (provider={})", attempts, max_attempts, if use_ollama { "ollama" } else { "openai" }), debug_file.is_some());
+        debug_log(debug_file, &format!("[ai] Model API attempt {}/{} (provider={})", attempts, max_attempts, if use_ollama { "ollama" } else { "qernel" }), debug_file.is_some());
         
         let request = if use_ollama {
             // Build Chat Completions payload for Ollama
@@ -126,6 +120,37 @@ pub fn make_openai_request_with_images(
                     "messages": messages,
                     "stream": false
                 }))
+        } else if use_qernel {
+            // Use Qernel model endpoint with Responses-like payload
+            let mut input_array = vec![
+                json!({"role": "system", "content": system_prompt}),
+            ];
+            if let Some(image_paths) = &images {
+                if !image_paths.is_empty() {
+                    let mut user_content = vec![json!({"type": "input_text", "text": user_prompt})];
+                    for image_path in image_paths {
+                        if let Ok(data_url) = encode_image_to_base64(image_path) {
+                            user_content.push(json!({"type": "input_image", "image_url": data_url}));
+                        }
+                    }
+                    input_array.push(json!({"role": "user", "content": user_content}));
+                } else {
+                    input_array.push(json!({"role": "user", "content": user_prompt}));
+                }
+            } else {
+                input_array.push(json!({"role": "user", "content": user_prompt}));
+            }
+
+            let url = qernel_model_url();
+            let mut req = client.post(&url);
+            if let Some(pat) = get_qernel_pat_from_env_or_config() {
+                req = req.bearer_auth(pat);
+            }
+            req
+                .json(&json!({
+                    "model": model,
+                    "input": input_array
+                }))
         } else {
             // Build Responses payload for OpenAI
             let mut input_array = vec![
@@ -163,9 +188,10 @@ pub fn make_openai_request_with_images(
                 input_array.push(json!({"role": "user", "content": user_prompt}));
             }
 
+            // Default path: Qernel Responses-compatible endpoint
+            let url = qernel_model_url();
             client
-                .post(&openai_responses_url())
-                .bearer_auth(api_key)
+                .post(&url)
                 .json(&json!({
                     "model": model,
                     "tools": tools,
@@ -189,19 +215,19 @@ pub fn make_openai_request_with_images(
     };
     
     let status = resp.status();
-    debug_log(debug_file, &format!("[ai] openai status: {}", status), debug_file.is_some());
+    debug_log(debug_file, &format!("[ai] model status: {}", status), debug_file.is_some());
     
     // Check for API errors
     if !status.is_success() {
         let error_text = resp.text().unwrap_or_default();
-        anyhow::bail!("OpenAI API error ({}): {}", status, error_text);
+        anyhow::bail!("Model API error ({}): {}", status, error_text);
     }
     
-    let raw = resp.text().context("openai response text")?;
-    debug_log(debug_file, &format!("[ai] openai body length: {} chars", raw.len()), debug_file.is_some());
+    let raw = resp.text().context("model response text")?;
+    debug_log(debug_file, &format!("[ai] model body length: {} chars", raw.len()), debug_file.is_some());
     
     // Debug: Print the raw response for troubleshooting
-    debug_log(debug_file, &format!("[ai] openai raw response:\n{}", raw), false);
+    debug_log(debug_file, &format!("[ai] raw response:\n{}", raw), false);
     
     // Parse response with better error handling
     let body: serde_json::Value = match serde_json::from_str(&raw) {

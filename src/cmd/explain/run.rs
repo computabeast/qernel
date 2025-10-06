@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use super::chunk::{ChunkGranularity, PythonChunk, chunk_python_or_fallback};
 use super::prompts::build_snippet_prompt;
 use super::network::call_text_model;
-use crate::util::get_openai_api_key_from_env_or_config;
 use super::renderer::{render_console, render_markdown_report, RenderOptions};
 use std::io::{self, Write};
 // use std::path::Path; // unused
@@ -86,7 +85,6 @@ pub fn handle_explain(
         let snippets: Vec<PythonChunk> = chunk_python_or_fallback(&content, &path, granularity)?;
 
         // Concurrent per-snippet calls (bounded)
-        let api_key = get_openai_api_key_from_env_or_config().unwrap_or_default();
         let max_workers = std::env::var("QERNEL_EXPLAIN_WORKERS").ok().and_then(|s| s.parse::<usize>().ok()).unwrap_or(4);
 
         let mut handles: Vec<std::thread::JoinHandle<(usize, String)>> = Vec::new();
@@ -112,13 +110,8 @@ pub fn handle_explain(
             }
 
             let model_cl = effective_model.clone();
-            let api_key_cl = api_key.clone();
             let handle = std::thread::spawn(move || {
-                let text = if api_key_cl.is_empty() {
-                    super::prompts::mock_call_model(&model_cl, &system, &user).unwrap_or_else(|_| "(mock explanation)".to_string())
-                } else {
-                    call_text_model(&api_key_cl, &model_cl, &system, &user).unwrap_or_else(|e| format!("(error: {})", e))
-                };
+                let text = call_text_model("", &model_cl, &system, &user).unwrap_or_else(|e| format!("(error: {})", e));
                 (idx, text)
             });
             handles.insert(0, handle);

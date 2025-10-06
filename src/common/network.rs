@@ -2,25 +2,23 @@ use anyhow::{Context, Result};
 use reqwest::blocking::Client;
 use serde_json::Value;
 use std::env;
-use crate::util::load_config;
-use crate::util::get_openai_api_key_from_env_or_config;
+use crate::util::{load_config, get_qernel_pat_from_env_or_config};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProviderKind {
-    OpenAI,
-    Ollama,
-}
+pub enum ProviderKind { Qernel, Ollama }
 
 pub fn detect_provider() -> ProviderKind {
     let env_pick = env::var("QERNEL_PROVIDER").unwrap_or_default().to_lowercase();
     if env_pick == "ollama" { return ProviderKind::Ollama; }
-    if env_pick == "openai" { return ProviderKind::OpenAI; }
+    if env_pick == "qernel" { return ProviderKind::Qernel; }
     if let Ok(cfg) = load_config() {
         if let Some(p) = cfg.provider.as_deref() {
-            return if p.eq_ignore_ascii_case("ollama") { ProviderKind::Ollama } else { ProviderKind::OpenAI };
+            if p.eq_ignore_ascii_case("ollama") { return ProviderKind::Ollama; }
+            if p.eq_ignore_ascii_case("qernel") { return ProviderKind::Qernel; }
+            return ProviderKind::Qernel;
         }
     }
-    ProviderKind::OpenAI
+    ProviderKind::Qernel
 }
 
 pub fn default_client(timeout_secs: u64) -> Result<Client> {
@@ -30,8 +28,8 @@ pub fn default_client(timeout_secs: u64) -> Result<Client> {
         .context("create http client")
 }
 
-pub fn openai_responses_url() -> String {
-    "https://api.openai.com/v1/responses".to_string()
+pub fn qernel_model_url() -> String {
+    "".to_string() // Will need to fill this with the server URL when ready
 }
 
 pub fn ollama_chat_url() -> String {
@@ -41,7 +39,7 @@ pub fn ollama_chat_url() -> String {
     format!("{}/chat/completions", base.trim_end_matches('/'))
 }
 
-pub fn parse_openai_text(body: &Value) -> Option<String> {
+pub fn parse_model_text(body: &Value) -> Option<String> {
     if let Some(s) = body.get("output_text").and_then(|v| v.as_str()) {
         return Some(s.to_string());
     }
@@ -76,29 +74,29 @@ pub fn parse_ollama_text(body: &Value) -> Option<String> {
 }
 
 /// Preflight check to validate the current provider configuration.
-/// - For OpenAI: verifies an API key exists and a simple request schema is accepted.
+/// - For Qernel: verifies the endpoint is reachable.
 /// - For Ollama: verifies the chat endpoint is reachable and the model exists.
 pub fn preflight_check(client: &Client, provider: ProviderKind, model: &str) -> Result<()> {
     match provider {
-        ProviderKind::OpenAI => {
-            if get_openai_api_key_from_env_or_config().is_none() {
-                anyhow::bail!("OPENAI_API_KEY is missing. Set it via env or 'qernel auth --set-openai-key'.");
+        ProviderKind::Qernel => {
+            // Verify the local/remote qernel model endpoint is reachable.
+            let url = qernel_model_url();
+            let mut req = client.post(&url);
+            if let Some(pat) = get_qernel_pat_from_env_or_config() {
+                req = req.bearer_auth(pat);
             }
-            // Minimal schema poke (no request if not desired). We'll do a lightweight HEAD-equivalent via small POST.
-            let resp = client
-                .post(&openai_responses_url())
-                .bearer_auth(get_openai_api_key_from_env_or_config().unwrap())
+            let resp = req
                 .json(&serde_json::json!({
                     "model": model,
                     "input": [{"role":"system","content":"ping"}],
-                    "max_output_tokens": 1
+                    "max_output_tokens": 16
                 }))
                 .send()
-                .context("openai preflight request")?;
-            if resp.status().is_client_error() || resp.status().is_server_error() {
+                .context("qernel preflight request")?;
+            if !resp.status().is_success() {
                 let status = resp.status();
                 let text = resp.text().unwrap_or_default();
-                anyhow::bail!("OpenAI preflight failed: {} {}", status, text);
+                anyhow::bail!("Qernel preflight failed: {} {}", status, text);
             }
             Ok(())
         }
