@@ -139,6 +139,8 @@ enum Commands {
         /// Optional positional model to use with --set-for-cmd
         cmd_model: Option<String>,
     },
+    /// Open a tiny native window that renders HTML (macOS support today)
+    See,
 }
 
 fn main() -> Result<()> {
@@ -157,5 +159,6 @@ fn main() -> Result<()> {
         Commands::Provider { show, list, set, base_url, check, model, set_for_cmd, cmd_model } => {
             cmd::provider::handle_provider(cmd::provider::ProviderCmd { show, list, set, base_url, check, model, set_for_cmd, cmd_model })
         }
+        Commands::See => cmd::see::handle_see(),
     }
 }
