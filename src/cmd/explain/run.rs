@@ -4,8 +4,10 @@ use std::path::PathBuf;
 use super::chunk::{ChunkGranularity, PythonChunk, chunk_python_or_fallback};
 use super::prompts::build_snippet_prompt;
 use super::network::call_text_model;
-use crate::util::get_openai_api_key_from_env_or_config;
 use super::renderer::{render_console, render_markdown_report, RenderOptions};
+use std::io::{self, Write};
+// use std::path::Path; // unused
+use crate::config::load_config as load_proj_config;
 use serde::Deserialize;
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -15,7 +17,7 @@ struct SnippetSummary { id: String, summary: String }
 pub fn handle_explain(
     files: Vec<String>,
     per: String,
-    model: String,
+    model: Option<String>,
     markdown: bool,
     output: Option<String>,
     pager: bool,
@@ -43,6 +45,31 @@ pub fn handle_explain(
 
     if let Some(dir) = output_dir.as_ref() { std::fs::create_dir_all(dir).ok(); }
 
+    // Resolve effective model: prefer project config's explain_model unless CLI explicitly overrides and user confirms
+    let cwd = std::env::current_dir().unwrap_or(PathBuf::from("."));
+    let proj_cfg_path = cwd.join(".qernel").join("qernel.yaml");
+    let configured_model = if proj_cfg_path.exists() {
+        load_proj_config(&proj_cfg_path)
+            .ok()
+            .and_then(|c| c.explain_model)
+            .unwrap_or_else(|| crate::util::get_default_explain_model())
+    } else {
+        crate::util::get_default_explain_model()
+    };
+
+    let effective_model = match model.as_ref() {
+        Some(cli_model) if cli_model != &configured_model => {
+            if ask_confirm(&format!(
+                "Configured explain model is '{}'. Override with CLI model '{}'? [y/N]: ",
+                configured_model, cli_model
+            ))? { cli_model.clone() } else { configured_model.clone() }
+        }
+        Some(cli_model) => cli_model.clone(),
+        None => configured_model.clone(),
+    };
+
+    println!("Explain model: {}", effective_model);
+
     // For now, sequential per file; we can parallelize later with a concurrency cap.
     for file in files {
         let path = PathBuf::from(&file);
@@ -58,7 +85,6 @@ pub fn handle_explain(
         let snippets: Vec<PythonChunk> = chunk_python_or_fallback(&content, &path, granularity)?;
 
         // Concurrent per-snippet calls (bounded)
-        let api_key = get_openai_api_key_from_env_or_config().unwrap_or_default();
         let max_workers = std::env::var("QERNEL_EXPLAIN_WORKERS").ok().and_then(|s| s.parse::<usize>().ok()).unwrap_or(4);
 
         let mut handles: Vec<std::thread::JoinHandle<(usize, String)>> = Vec::new();
@@ -83,14 +109,9 @@ pub fn handle_explain(
                 }
             }
 
-            let model_cl = model.clone();
-            let api_key_cl = api_key.clone();
+            let model_cl = effective_model.clone();
             let handle = std::thread::spawn(move || {
-                let text = if api_key_cl.is_empty() {
-                    super::prompts::mock_call_model(&model_cl, &system, &user).unwrap_or_else(|_| "(mock explanation)".to_string())
-                } else {
-                    call_text_model(&api_key_cl, &model_cl, &system, &user).unwrap_or_else(|e| format!("(error: {})", e))
-                };
+                let text = call_text_model("", &model_cl, &system, &user).unwrap_or_else(|e| format!("(error: {})", e));
                 (idx, text)
             });
             handles.insert(0, handle);
@@ -126,4 +147,11 @@ pub fn handle_explain(
     Ok(())
 }
 
-
+fn ask_confirm(prompt: &str) -> Result<bool> {
+    print!("{}", prompt);
+    io::stdout().flush().ok();
+    let mut buf = String::new();
+    io::stdin().read_line(&mut buf).ok();
+    let ans = buf.trim().to_lowercase();
+    Ok(ans == "y" || ans == "yes")
+}

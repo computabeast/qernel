@@ -10,6 +10,7 @@ pub mod validation;
 
 use anyhow::{Context, Result};
 use std::path::Path;
+use std::io::{self, Write};
 
 use crate::config::load_config;
 use crate::cmd::prototype::logging::{debug_log, init_debug_logging};
@@ -24,10 +25,15 @@ pub fn handle_prototype(cwd: String, model: String, max_iters: u32, debug: bool,
     let config_path = cwd_abs.join(".qernel").join("qernel.yaml");
     let mut config = load_config(&config_path)?;
     
-    // Override config with command line arguments if provided
-    if !model.is_empty() && model != "gpt-5-codex" {
-        // Only override if a different model was explicitly provided
-        config.agent.model = model;
+    // Resolve effective model: prefer project config unless CLI explicitly overrides and user confirms
+    if !model.is_empty() && model != config.agent.model {
+        // Prefer YAML precedence; ask to override YAML with CLI configured default
+        if ask_confirm(&format!(
+            "Project YAML model is '{}'. Override with CLI model '{}'? [y/N]: ",
+            config.agent.model, model
+        ))? {
+            config.agent.model = model;
+        }
     }
     if max_iters > 0 && max_iters != 15 {
         // Only override if a different max_iters was explicitly provided
@@ -71,6 +77,32 @@ pub fn handle_prototype(cwd: String, model: String, max_iters: u32, debug: bool,
         config.agent.max_iterations,
         debug,
     )
+}
+
+pub fn check_prototype(cwd: String, model: String) -> Result<()> {
+    let cwd_path = Path::new(&cwd);
+    let cwd_abs = cwd_path.canonicalize().unwrap_or_else(|_| cwd_path.to_path_buf());
+    let config_path = cwd_abs.join(".qernel").join("qernel.yaml");
+    let config = load_config(&config_path)?;
+
+    // Warn if YAML model differs from tool default
+    let tool_default = crate::util::get_default_prototype_model();
+    if config_path.exists() && config.agent.model != tool_default {
+        println!(
+            "Warning: YAML prototype model '{}' differs from tool default '{}'. YAML takes precedence at runtime.",
+            config.agent.model, tool_default
+        );
+    }
+
+    // Resolve model from config vs CLI
+    let effective_model = if !model.is_empty() && model != config.agent.model { model } else { config.agent.model };
+
+    // Preflight provider + model
+    let client = crate::common::network::default_client(10)?;
+    let provider = crate::common::network::detect_provider();
+    crate::common::network::preflight_check(&client, provider, &effective_model)?;
+    println!("Prototype preflight passed for model '{}'.", effective_model);
+    Ok(())
 }
 
 /// Quickstart: scaffold a project for an arXiv URL then run prototype
@@ -125,4 +157,13 @@ fn read_spec_goal(cwd: &Path) -> Result<String> {
         .context("Failed to read .qernel/spec.md")?;
 
     Ok(spec_content)
+}
+
+fn ask_confirm(prompt: &str) -> Result<bool> {
+    print!("{}", prompt);
+    io::stdout().flush().ok();
+    let mut buf = String::new();
+    io::stdin().read_line(&mut buf).ok();
+    let ans = buf.trim().to_lowercase();
+    Ok(ans == "y" || ans == "yes")
 }

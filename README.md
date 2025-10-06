@@ -115,16 +115,9 @@ You can also output results of the file to Markdown by adding the `--markdown` f
 
 ### Limitations
 
-- This project currently relies on AI models that are not optimized for quantum computing concepts/programming, and therefore may not always produce accurate results. **We are actively working to solve this issue.** However, we've seen strong potential in AI models to mathetmatically reason (see [here](https://deepmind.google/discover/blog/advanced-version-of-gemini-with-deep-think-officially-achieves-gold-medal-standard-at-the-international-mathematical-olympiad/), [here](https://x.com/alexwei_/status/1946477742855532918)), and expect this accuracy gap to decrease over time.
-- The core infrastructure logic to edit and maintain files in a repository was ported over from the [Codex CLI](https://github.com/openai/codex), and as a result, currently only works with OpenAI models. The [main agent loop]() natively supports the `codex-mini-latest` and `gpt-5-codex` models, if you'd like to use another model, you might need to edit the code and rebuild until we extend the support.
-- You currently need to use your own OpenAI API key to access the models, you can create an account and get one from the [OpenAI API Platform site](https://platform.openai.com/docs/overview).
-- We're actively working to migrate away from the OpenAI API to [Ollama](https://ollama.com), which will allow you to run your own models locally on your computer, access a suite of open source models, or use a cloud model if you wish.
-
+- This project currently relies on both open and closed-source models that are not optimized for quantum computing concepts/programming, and therefore may not always produce accurate results. **We are actively working to solve this issue.** However, we've seen strong potential in AI models to mathetmatically reason (see [here](https://deepmind.google/discover/blog/advanced-version-of-gemini-with-deep-think-officially-achieves-gold-medal-standard-at-the-international-mathematical-olympiad/), [here](https://x.com/alexwei_/status/1946477742855532918)), and expect this accuracy gap to decrease over time.
 
 ### Tips for best performance
-
-- For one-shot prototyping of arXiv papers, it's highly recommended to use `gpt-5-codex` with detailed implementation notes in `spec.md`. The model is surprisingly good if you tell it exactly what you want. The drawbacks are that it's expensive.
-- For smaller examples that do not involve high context, `codex-mini-latest` with a well formatted spec file and well written tests can often get the job done.
 - The agents looks at the tests in `src/tests.py` to form its implementation, and will automatically run its solutions against the test suite upon each iteration to mold its implementation. You can set the `--max-iter` flag to limit how many times it tries. Simple tests can significantly improve and speed up the implemetation process.
 
 ### Cloning and sharing projects
@@ -142,3 +135,6 @@ qernel push <URL>
 qernel pull <REPO> <DEST>
 ```
 
+### Acknowledgements
+- The core infrastructure logic to edit and maintain files in a repository was ported over from the [Codex CLI](https://github.com/openai/codex). Thank you OpenAI team for making this public and under a permissive license. 
+- Thank you [Linus Torvalds](https://en.wikipedia.org/wiki/Linus_Torvalds) for building the foundation of modern software, and serving as an inspiration an example for the power of open source work.

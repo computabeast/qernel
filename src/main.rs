@@ -1,6 +1,7 @@
 mod cmd;
 mod config;
 mod util;
+pub mod common;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -64,8 +65,8 @@ enum Commands {
         /// Working directory
         #[arg(long, default_value = ".")]
         cwd: String,
-        /// OpenAI model to use (e.g., gpt-4o-mini)
-        #[arg(long, default_value = "gpt-5-codex")]
+        /// Model to use (default depends on provider)
+        #[arg(long, default_value = "qernel-auto")]
         model: String,
         /// Max iterations for AI loop
         #[arg(long, default_value_t = 15)]
@@ -82,6 +83,9 @@ enum Commands {
         /// One-shot prototype an arXiv paper URL (creates new project arxiv-<id>)
         #[arg(long)]
         arxiv: Option<String>,
+        /// Run preflight checks and exit
+        #[arg(long)]
+        check: bool,
     },
     /// Explain Python source files with snippet-level analysis
     Explain {
@@ -90,8 +94,8 @@ enum Commands {
         /// Granularity: function | class | block (default: function)
         #[arg(long, default_value = "function")]
         per: String,
-        /// OpenAI model to use (default: codex-mini-latest)
-        #[arg(long, default_value = "codex-mini-latest")]
+        /// Model to use (default depends on provider)
+        #[arg(long, default_value = "qernel-auto")]
         model: String,
         /// Emit Markdown to .qernel/explain or to --output if provided
         #[arg(long)]
@@ -105,6 +109,44 @@ enum Commands {
         /// Max characters per explanation
         #[arg(long)]
         max_chars: Option<usize>,
+        /// Run preflight checks and exit
+        #[arg(long)]
+        check: bool,
+    },
+    /// Provider operations: show and set provider/base URL
+    Provider {
+        /// Show current provider configuration
+        #[arg(long)]
+        show: bool,
+        /// List available providers
+        #[arg(long)]
+        list: bool,
+        /// Run a preflight check
+        #[arg(long)]
+        check: bool,
+        /// Optional model to check
+        #[arg(long)]
+        model: Option<String>,
+        /// Set provider: openai | ollama
+        #[arg(long)]
+        set: Option<String>,
+        /// Set base URL (used for Ollama)
+        #[arg(long)]
+        base_url: Option<String>,
+        /// Set default model for a specific command
+        #[arg(long)]
+        set_for_cmd: Option<String>,
+        /// Positional model argument when using --set-for-cmd
+        cmd_model: Option<String>,
+        /// Interactive picker to choose provider and default models
+        #[arg(long)]
+        pick: bool,
+    },
+    /// Open a tiny native window to view the Qernel Zoo or a URL (macOS support today)
+    See {
+        /// Open a specific URL (defaults to the Qernel Zoo)
+        #[arg(long)]
+        url: Option<String>,
     },
 }
 
@@ -115,11 +157,15 @@ fn main() -> Result<()> {
         Commands::Auth { set_openai_key, unset_openai_key } => cmd::login::handle_auth_with_flags(set_openai_key, unset_openai_key),
         Commands::Push { remote, url, branch, no_commit } => cmd::push::handle_push(remote, url, branch, no_commit),
         Commands::Pull { repo, dest, branch, server } => cmd::pull::handle_pull(repo, dest, branch, server),
-        Commands::Prototype { cwd, model, max_iters, debug, spec_only, spec_and_content_only, arxiv } => {
-            if let Some(url) = arxiv { cmd::prototype::quickstart_arxiv(url, model, max_iters, debug) } else { cmd::prototype::handle_prototype(cwd, model, max_iters, debug, spec_only, spec_and_content_only) }
+        Commands::Prototype { cwd, model, max_iters, debug, spec_only, spec_and_content_only, arxiv, check } => {
+            if check { cmd::prototype::check_prototype(cwd, model) } else if let Some(url) = arxiv { cmd::prototype::quickstart_arxiv(url, model, max_iters, debug) } else { cmd::prototype::handle_prototype(cwd, model, max_iters, debug, spec_only, spec_and_content_only) }
         }
-        Commands::Explain { files, per, model, markdown, output, no_pager, max_chars } => {
-            cmd::explain::handle_explain(files, per, model, markdown, output, !no_pager, max_chars)
+        Commands::Explain { files, per, model, markdown, output, no_pager, max_chars, check } => {
+            if check { cmd::explain::check_explain(files, None) } else { cmd::explain::handle_explain(files, per, Some(model), markdown, output, !no_pager, max_chars) }
         }
+        Commands::Provider { show, list, set, base_url, check, model, set_for_cmd, cmd_model, pick } => {
+            cmd::provider::handle_provider(cmd::provider::ProviderCmd { show, list, set, base_url, check, model, set_for_cmd, cmd_model, pick })
+        }
+        Commands::See { url } => cmd::see::handle_see(url),
     }
 }
